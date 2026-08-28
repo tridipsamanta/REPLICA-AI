@@ -1,12 +1,12 @@
 <div align="center">
 
-<img src="assets/hero.png" alt="VoiceGuard" width="100%">
+<img src="assets/replica-logo.png" alt="REPLICA" width="70%">
 
-# VoiceGuard
+# REPLICA
 
-**Real-time voice deepfake detection, synthesis watermarking, and vishing defence.**
+**AI voice security platform for real-time deepfake detection, synthesis watermarking, forensic analysis, and vishing defense.**
 
-[![CI](https://github.com/MohammadThabetHassan/VoiceGuard/actions/workflows/ci.yml/badge.svg)](https://github.com/MohammadThabetHassan/VoiceGuard/actions/workflows/ci.yml)
+[![CI](https://github.com/tridipsamanta/REPLICA-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/tridipsamanta/REPLICA-AI/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
@@ -16,7 +16,8 @@
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![IEEE SM2026](https://img.shields.io/badge/IEEE-SM2026-00629B.svg)](#-citation)
 
-[**🌐 Live demo**](https://voice-deepfake-vishing-detector-generator.eu.cc) ·
+[**▶ Watch demo video**](https://youtu.be/D_FcnXMhvtc?si=oZ3hIpx_A3jRhZOm) ·
+[**🌐 Live deployment**](https://voice-deepfake-vishing-detector-generator.eu.cc) ·
 <a href="#-quick-start">Quick start</a> ·
 <a href="#-results">Results</a> ·
 <a href="#-architecture">Architecture</a> ·
@@ -28,7 +29,7 @@
 
 ---
 
-## Why VoiceGuard?
+## Why REPLICA?
 
 AI voice cloning has turned phone fraud into a scalable weapon. In 2024 criminals
 stole **US$25M** from a company using a deepfaked CFO on a video call, and reported
@@ -36,9 +37,9 @@ voice-phishing ("vishing") incidents **surged over 1,600%** in early 2025. Off-t
 detectors collapse on *real-world* audio — phone codecs, background noise, and unseen
 TTS engines — and offer no explanation a human analyst can act on.
 
-**VoiceGuard** is an end-to-end platform that detects voice deepfakes in real time,
+**REPLICA** is an end-to-end platform that detects voice deepfakes in real time,
 explains its decisions, watermarks any audio it generates, and ships small enough to
-run at the edge. Built as a graduation project (GP2) at Canadian University Dubai; the
+run at the edge. Built by **Aimers 1.0** as a Graduation Project GP2 (2025–2026); the
 classical baseline was accepted at **IEEE SM2026**.
 
 ## ✨ Features
@@ -54,15 +55,24 @@ classical baseline was accepted at **IEEE SM2026**.
 
 ## 🎬 Demo
 
-End-to-end on the live deployment: log in → upload a **premium ElevenLabs clip → flagged 100% FAKE** (588 ms) → generate **watermarked** speech. Try it at **[voice-deepfake-vishing-detector-generator.eu.cc](https://voice-deepfake-vishing-detector-generator.eu.cc)**.
+Watch the REPLICA walkthrough on YouTube: **[REPLICA demo video](https://youtu.be/D_FcnXMhvtc?si=oZ3hIpx_A3jRhZOm)**.
 
-![VoiceGuard demo](assets/demo.gif)
+<p align="center">
+  <a href="https://youtu.be/D_FcnXMhvtc?si=oZ3hIpx_A3jRhZOm">
+    <img src="https://img.youtube.com/vi/D_FcnXMhvtc/maxresdefault.jpg" alt="Watch the REPLICA demo video" width="720">
+  </a>
+</p>
 
-> Full-resolution clip: [`assets/demo.mp4`](assets/demo.mp4). Recorded with Playwright (`deploy/demo_record.py`).
+End-to-end flow: log in as an analyst, stream or upload audio, detect synthetic speech,
+review the confidence score, and inspect explainable forensic evidence.
 
-| Detect | Generate | Results |
-|:------:|:--------:|:-------:|
-| ![Detect](assets/screenshots/01_detect.png) | ![Generate](assets/screenshots/03_generate.png) | ![Results](assets/screenshots/04_results.png) |
+| Live Voice Analysis | Detection Result |
+|:-------------------:|:----------------:|
+| ![REPLICA live voice analysis](assets/screenshots/replica-live-analysis.png) | ![REPLICA AI-generated voice detection result](assets/screenshots/replica-detect-result.png) |
+
+| XAI Forensic Analysis | Development Team |
+|:---------------------:|:----------------:|
+| ![REPLICA explainable AI forensic analysis](assets/screenshots/replica-xai-forensics.png) | ![REPLICA development team](assets/screenshots/replica-about-team.png) |
 
 ## 📊 Results
 
@@ -148,7 +158,7 @@ flowchart LR
 <summary><b>📁 Repository layout</b></summary>
 
 ```
-VoiceGuard/
+REPLICA-AI/
 ├── src/voiceguard/        # Python package
 │   ├── api/               #   FastAPI app — auth (JWT/roles), routes, middleware, WebSockets
 │   ├── models/            #   XLS-R+AASIST, DSFNet, Wav2Vec2/WavLM, classical baseline
@@ -174,8 +184,8 @@ VoiceGuard/
 ## 🚀 Quick start
 
 ```bash
-git clone https://github.com/MohammadThabetHassan/VoiceGuard.git
-cd VoiceGuard
+git clone https://github.com/tridipsamanta/REPLICA-AI.git
+cd REPLICA-AI
 
 # Backend (Python 3.12)
 python3 -m venv venv && source venv/bin/activate
@@ -202,7 +212,7 @@ Self-hosted deployment (Nginx + systemd) is scripted in [`deploy/`](deploy/).
 
 | Mode | What | Install |
 |------|------|---------|
-| 🌐 **Web app / API** | Full SSL model **v9c** (catches clones + premium); live demo + REST API | this Quick start, or the [live demo](https://voice-deepfake-vishing-detector-generator.eu.cc) |
+| 🌐 **Web app / API** | Full SSL model **v9c** (catches clones + premium); live deployment + REST API | this Quick start, the [live deployment](https://voice-deepfake-vishing-detector-generator.eu.cc), or the [demo video](https://youtu.be/D_FcnXMhvtc?si=oZ3hIpx_A3jRhZOm) |
 | 🔬 **IPED forensic add-on** | Flags deepfake audio inside the [IPED](https://github.com/sepinf-inc/IPED) evidence pipeline (a capability IPED lacks) | [`integrations/iped/`](integrations/iped/) |
 | 🍓 **Raspberry Pi / edge** | 0.62 MB INT8 model, CPU-only, `onnxruntime`+`numpy`+`soundfile` (no torch) | [`edge/`](edge/) |
 
@@ -294,17 +304,17 @@ Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) and our
 
 | Name | Role |
 |------|------|
-| **Mohammad Thabet Hassan** | Detection architecture, FastAPI backend, CI/CD, deployment |
-| **Fahad Sadek Al-Jazzeri** | Feature extraction, classical ML, SSL models, evaluation |
-| **Ahmed Sami Alameri** | React frontend, synthesis, watermarking, VoIP, forensics, XAI |
+| **Tridip Samanta & Sourav Das** | Detection architecture, FastAPI backend, CI/CD pipeline, server deployment |
+| **Subham Sidhanta & Kaniska Ojha** | Feature extraction, classical ML models, SSL representation, evaluation scripts |
+| **Sohini & Ishita Ghosh** | React frontend, synthesis engines, C2PA watermarking, VoIP bridge, XAI |
 
-**Supervisor:** [Dr. Arash Kermani Kolankeh](https://github.com/arashkermaniprojects) · **Institution:** Canadian University Dubai · **2025–2026**
+**Supervisor:** Dr. Arunita Das · **Team:** Aimers 1.0 · **Graduation Project:** GP2 (2025–2026)
 
 ## 🙏 Acknowledgements
 
-A heartfelt **thank you to our supervisor, [Dr. Arash Kermani Kolankeh](https://github.com/arashkermaniprojects)**,
-whose guidance, insight, and encouragement shaped VoiceGuard at every stage. This project
-would not have been possible without his mentorship — thank you, Dr. Arash.
+A heartfelt **thank you to our supervisor, Dr. Arunita Das**, whose guidance, insight,
+and encouragement shaped REPLICA at every stage. This project would not have been
+possible without her mentorship.
 
 ## 📚 Citation
 
@@ -313,13 +323,13 @@ detection, F1 = 0.95) — not the full platform or the XLS-R+AASIST results in t
 repository, which post-date the submission. If you cite the accepted work:
 
 ```bibtex
-@inproceedings{voiceguard2026,
-  title     = {VoiceGuard: Real-Time Voice Deepfake Detection and Adversarial
+@inproceedings{replica2026,
+  title     = {REPLICA: Real-Time Voice Deepfake Detection and Adversarial
                Speech Synthesis with Explainable AI},
-  author    = {Hassan, Mohammad Thabet and Al-Jazzeri, Fahad Sadek and Alameri, Ahmed Sami},
+  author    = {Samanta, Tridip and Das, Sourav and Sidhanta, Subham and Ojha, Kaniska
+               and Ghosh, Sohini and Ghosh, Ishita},
   booktitle = {Proceedings of IEEE SM2026},
   year      = {2026},
-  organization = {Canadian University Dubai},
   note      = {Accepted paper covers the classical baseline; the deployed
                XLS-R+AASIST detector is described in this repository}
 }
@@ -327,4 +337,4 @@ repository, which post-date the submission. If you cite the accepted work:
 
 ## 📄 License
 
-The original VoiceGuard source code and documentation in this repository are licensed under the [Apache License 2.0](LICENSE). Third-party models, datasets, pretrained weights, synthesis engines, fonts, images, and other external assets remain subject to their own licenses and attribution requirements; see the linked provenance and documentation records before redistribution.
+The REPLICA source code and documentation in this repository are licensed under the [Apache License 2.0](LICENSE). Third-party models, datasets, pretrained weights, synthesis engines, fonts, images, and other external assets remain subject to their own licenses and attribution requirements; see the linked provenance and documentation records before redistribution.
