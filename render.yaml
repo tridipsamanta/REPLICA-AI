@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: replica-ai
+    env: docker
+    dockerfilePath: Dockerfile
+    plan: free
+    envVars:
+      - key: VG_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true

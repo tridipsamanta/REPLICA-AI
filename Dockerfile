@@ -1,3 +1,12 @@
+# Stage 1: Build React Frontend SPA
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# Stage 2: Python Backend + Frontend Serving
 FROM python:3.12-slim AS base
 
 WORKDIR /app
@@ -8,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY pyproject.toml ./
 COPY src/ ./src/
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # CPU torch wheels via --extra-index-url in the SAME resolve (mirrors CI):
 # installing from PyPI first would pull the ~2.5 GB CUDA torch and then
