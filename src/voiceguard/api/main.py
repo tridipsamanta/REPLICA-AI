@@ -419,203 +419,6 @@ def _detect_classical(path: str) -> tuple[str, float]:
     return _detect_classical_array(data, sr)
 
 
-def _analyze_audio_file(
-    path: str,
-    model_key: str,
-    explain: bool = False,
-) -> tuple[str, float, int, float, str, ExplanationResult | None]:
-    """Window-based audio deepfake analysis supporting any duration (0.8s to 600s).
-
-    1. Loads audio into 16kHz mono float32.
-    2. Slices into 6-second analysis windows with 3-second hop (50% overlap).
-    3. Runs model inference sequentially on each valid window chunk.
-    4. Aggregates window probabilities using robust statistical aggregation.
-    5. Optionally constructs ExplanationResult from the real window attributions.
-
-    Returns (label, confidence, windows_analyzed, seconds_analyzed, used_model, explanation).
-    """
-    import torch
-    import torchaudio
-
-    data, sr = _read_audio(path)
-    data = np.ascontiguousarray(data, dtype=np.float32)
-
-    # Ensure 16kHz for model consistency
-    if sr != 16000:
-        data_t = torch.from_numpy(data).unsqueeze(0)
-        data_t = torchaudio.functional.resample(data_t, sr, 16000)
-        data = data_t.squeeze(0).numpy()
-        sr = 16000
-
-    total_samples = len(data)
-    total_duration_s = total_samples / sr
-
-    if total_duration_s < 0.8:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Audio too short to analyse — please upload at least ~1 second of speech.",
-        )
-
-    rms_total = float(np.sqrt(np.mean(np.square(data)))) if total_samples > 0 else 0.0
-    if rms_total < 1e-4:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Audio is silent or near-silent — no speech detected to analyse.",
-        )
-
-    # Window configuration: 6.0s window, 3.0s hop (50% overlap)
-    window_s = 6.0
-    hop_s = 3.0
-    win_samples = int(window_s * sr)
-    hop_samples = int(hop_s * sr)
-
-    windows: list[tuple[int, int]] = []
-    if total_samples <= win_samples:
-        windows.append((0, total_samples))
-    else:
-        start = 0
-        while start < total_samples:
-            end = min(start + win_samples, total_samples)
-            if (end - start) >= int(0.8 * sr):  # at least 0.8s in final window
-                windows.append((start, end))
-            if end >= total_samples:
-                break
-            start += hop_samples
-
-    # Load requested model or detect fallback
-    used_model = model_key
-    hf_detector = None
-    ssl_model = None
-
-    if model_key == "wav2vec2_spoof":
-        try:
-            hf_detector = registry.load("wav2vec2_spoof")
-        except Exception:
-            hf_detector = None
-    elif model_key in _SSL_KEYS:
-        ssl_model = registry.load(model_key)
-        if ssl_model is None:
-            try:
-                hf_detector = registry.load("wav2vec2_spoof")
-                used_model = "wav2vec2_spoof"
-            except Exception:
-                hf_detector = None
-
-    window_results: list[dict] = []
-
-    for idx, (w_start, w_end) in enumerate(windows):
-        chunk = data[w_start:w_end]
-        start_s = w_start / sr
-        end_s = w_end / sr
-
-        # Skip pure digital silence chunks
-        c_rms = float(np.sqrt(np.mean(np.square(chunk)))) if len(chunk) > 0 else 0.0
-        if c_rms < 1e-4:
-            continue
-
-        p_fake = 0.5
-        p_real = 0.5
-
-        if ssl_model is not None:
-            try:
-                wav_t = torch.from_numpy(chunk).unsqueeze(0)
-                p_fake = _ssl_fake_prob(ssl_model, wav_t, model_key)
-                p_real = 1.0 - p_fake
-            except Exception as exc:
-                logger.warning("SSL inference failed on window %d: %s", idx, exc)
-                ssl_model = None
-
-        if ssl_model is None:
-            if hf_detector is not None:
-                try:
-                    _, _, detail = hf_detector.predict_array_detailed(chunk, sr)
-                    p_fake = detail["fake_prob"]
-                    p_real = detail["real_prob"]
-                    used_model = "wav2vec2_spoof"
-                except Exception as exc:
-                    logger.warning("HF inference failed on window %d: %s", idx, exc)
-                    hf_detector = None
-
-        if ssl_model is None and hf_detector is None:
-            # High-accuracy acoustic feature fallback
-            c_label, c_conf = _detect_classical_array(chunk, sr)
-            p_fake = c_conf if c_label == "fake" else (1.0 - c_conf)
-            p_real = 1.0 - p_fake
-            used_model = "classical"
-
-        window_results.append({
-            "window_id": idx,
-            "start_s": round(start_s, 2),
-            "end_s": round(end_s, 2),
-            "fake_prob": float(p_fake),
-            "real_prob": float(p_real),
-        })
-
-    if not window_results:
-        # All windows were silent
-        return "real", 0.99, 1, round(total_duration_s, 2), used_model, None
-
-    fake_probs = [w["fake_prob"] for w in window_results]
-    median_fake = float(np.median(fake_probs))
-    mean_fake = float(np.mean(fake_probs))
-    high_fake_ratio = sum(1 for p in fake_probs if p >= 0.65) / len(fake_probs)
-
-    # Multi-window aggregation:
-    if high_fake_ratio >= 0.35 or median_fake >= 0.50 or mean_fake >= 0.50:
-        final_label = "fake"
-        final_conf = max(median_fake, mean_fake)
-    else:
-        final_label = "real"
-        final_conf = 1.0 - min(median_fake, mean_fake)
-
-    final_conf = round(max(0.50, min(0.9999, float(final_conf))), 4)
-    seconds_analyzed = round(total_duration_s, 2)
-    windows_analyzed = len(window_results)
-
-    explanation = None
-    if explain:
-        # Build temporal attribution frames from window probabilities (10ms bins)
-        n_frames = max(1, int(total_duration_s * 100))
-        attribution_frames = np.zeros(n_frames, dtype=np.float32)
-        frame_counts = np.zeros(n_frames, dtype=np.float32)
-
-        for w in window_results:
-            f_start = int(w["start_s"] * 100)
-            f_end = min(n_frames, int(w["end_s"] * 100))
-            score = w["fake_prob"] if final_label == "fake" else w["real_prob"]
-            attribution_frames[f_start:f_end] += score
-            frame_counts[f_start:f_end] += 1.0
-
-        mask = frame_counts > 0
-        attribution_frames[mask] /= frame_counts[mask]
-
-        # Top segments sorted by importance
-        sorted_windows = sorted(
-            window_results,
-            key=lambda x: x["fake_prob"] if final_label == "fake" else x["real_prob"],
-            reverse=True,
-        )
-        top_segments = [
-            AttributionSegment(
-                start_s=w["start_s"],
-                end_s=w["end_s"],
-                importance=round(w["fake_prob"] if final_label == "fake" else w["real_prob"], 4),
-            )
-            for w in sorted_windows[:5]
-        ]
-
-        explanation = ExplanationResult(
-            method="temporal_window_analysis",
-            baseline="genuine_speech",
-            target_class=1 if final_label == "fake" else 0,
-            frame_duration_ms=10,
-            attribution_frames=[round(float(f), 4) for f in attribution_frames],
-            top_segments=top_segments,
-        )
-
-    return final_label, final_conf, windows_analyzed, seconds_analyzed, used_model, explanation
-
-
 # SSL models take (B, T); CNN models (DSFNet/AASIST) take (B, 1, T).
 _SSL_KEYS = {
     "wav2vec2",
@@ -714,48 +517,39 @@ def _ssl_fake_prob(model, wav, model_key: str) -> float:
         return float(torch.softmax(model(inp), dim=-1)[0, 1])
 
 
-def _detect_ssl_tensor(wav, model_key: str) -> tuple[str, float, float, str]:
+def _detect_ssl_tensor(wav, model_key: str) -> tuple[str, float, float]:
     """Single-pass SSL detection on the clip from its natural start.
 
-    Returns (label, confidence, seconds_analyzed, used_model_key). When the
-    requested checkpoint is unavailable, falls back to wav2vec2_spoof (the
-    HuggingFace Hub anti-spoofing detector) — the same strategy the live
-    streaming path uses. used_model_key tells callers which model actually ran.
+    Returns (label, confidence, seconds_analyzed).
     """
     model = registry.load(model_key)
-    used_key = model_key
     if model is None:
-        # Fall back to the working HuggingFace hub detector instead of 503.
-        logger.warning(
-            "checkpoint for '%s' unavailable — falling back to wav2vec2_spoof", model_key
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                f"Model '{model_key}' checkpoint not found. Set {model_key.upper()}_PATH "
+                f"or stage checkpoint at checkpoints/{model_key}/model_best.pt. "
+                "Alternatively, select 'wav2vec2_spoof' or 'classical' in the model selector."
+            ),
         )
-        fallback = registry.load("wav2vec2_spoof")
-        if fallback is None:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=(
-                    f"Model '{model_key}' checkpoint not found (set {model_key.upper()}_PATH) "
-                    "and the wav2vec2_spoof fallback could not load either."
-                ),
-            )
-        # wav2vec2_spoof works on raw arrays; convert tensor back.
-        scored = wav[..., : int(_SCORE_MAX_S * 16000)]
-        _guard_audio_quality(scored)
-        audio_np = scored.squeeze(0).numpy()
-        label, confidence = _detect_hf_array(audio_np, 16000, "wav2vec2_spoof")
-        return label, round(confidence, 4), round(scored.shape[-1] / 16000, 2), "wav2vec2_spoof"
-    # Guard the region that will actually be scored, not the whole clip — a long
-    # recording with a near-silent first VG_SCORE_SECONDS must 422, not let the
-    # model confidently call silence "fake".
     scored = wav[..., : int(_SCORE_MAX_S * 16000)]
     _guard_audio_quality(scored)
     fake_prob = _ssl_fake_prob(model, wav, model_key)
     label = "fake" if fake_prob >= 0.5 else "real"
     confidence = fake_prob if label == "fake" else 1.0 - fake_prob
-    return label, round(confidence, 4), round(scored.shape[-1] / 16000, 2), used_key
+    logger.info(
+        "DIAGNOSTIC: model=%s duration_s=%.2f sr=16000 shape=%s fake_prob=%.4f label=%s conf=%.4f",
+        model_key,
+        scored.shape[-1] / 16000,
+        list(wav.shape),
+        fake_prob,
+        label,
+        confidence,
+    )
+    return label, round(confidence, 4), round(scored.shape[-1] / 16000, 2)
 
 
-def _detect_ssl(path: str, model_key: str) -> tuple[str, float, int, str]:
+def _detect_ssl(path: str, model_key: str) -> tuple[str, float, float]:
     return _detect_ssl_tensor(_load_wav_mono16k(path), model_key)
 
 
@@ -865,15 +659,26 @@ def _explain_occlusion(
 def _detect_hf_array(
     audio: np.ndarray, sr: int, model_key: str = "wav2vec2_spoof"
 ) -> tuple[str, float]:
-    """Score a raw waveform with a HuggingFace anti-spoofing detector, falling back to classical features."""
-    try:
-        detector = registry.load(model_key)
-        if detector is not None:
-            return detector.predict_array(audio, sr)
-    except Exception as exc:
-        logger.warning("HF model %s inference failed: %s; using classical fallback", model_key, exc)
-
-    return _detect_classical_array(audio, sr)
+    """Score a raw waveform with a HuggingFace anti-spoofing detector."""
+    detector = registry.load(model_key)
+    if detector is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"HuggingFace model '{model_key}' is not available.",
+        )
+    label, confidence, detail = detector.predict_array_detailed(audio, sr)
+    logger.info(
+        "DIAGNOSTIC: model=%s duration_s=%.2f sr=%d shape=%s real_prob=%.4f fake_prob=%.4f label=%s conf=%.4f",
+        model_key,
+        len(audio) / sr,
+        sr,
+        list(audio.shape),
+        detail.get("real_prob", 0.0),
+        detail.get("fake_prob", 0.0),
+        label,
+        confidence,
+    )
+    return label, confidence
 
 
 def _detect_hf(path: str, model_key: str = "wav2vec2_spoof") -> tuple[str, float]:
@@ -1110,22 +915,18 @@ async def detect(
     audio_info = _probe_audio(path)
     t0 = time.perf_counter()
 
-    try:
-        label, confidence, windows_analyzed, seconds_analyzed, used_model, explanation = _analyze_audio_file(
-            path=path,
-            model_key=str(model),
-            explain=explain,
-        )
-        model = ModelType(used_model) if used_model in ModelType.__members__ or used_model in [m.value for m in ModelType] else model
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception("Inference failed for model %s: %s; falling back to acoustic detector", model, exc)
+    if model == ModelType.wav2vec2_spoof:
+        label, confidence = _detect_hf(path, str(model))
+        seconds_analyzed = audio_info.get("duration_s")
+        explanation = _explain_hf(path, str(model)) if explain else None
+    elif model == ModelType.classical:
         label, confidence = _detect_classical(path)
-        windows_analyzed = 1
         seconds_analyzed = audio_info.get("duration_s")
         explanation = _explain_classical(path) if explain else None
-        model = ModelType.classical
+    else:
+        wav = _load_wav_mono16k(path)
+        label, confidence, seconds_analyzed = _detect_ssl_tensor(wav, str(model))
+        explanation = _explain_ssl_fast(path, str(model)) if explain else None
 
     if explanation is not None:
         try:
@@ -1144,19 +945,18 @@ async def detect(
         model=str(model),
         user=_user,
         timestamp=time.time(),
-        windows_analyzed=windows_analyzed,
+        windows_analyzed=1,
         seconds_analyzed=seconds_analyzed,
         audio_info=audio_info,
         app_version=__version__,
         narrative=explanation.narrative if explanation is not None else None,
     )
     logger.info(
-        "detect user=%s model=%s verdict=%s conf=%.3f windows=%d analyzed_s=%s latency_ms=%.1f",
+        "detect user=%s model=%s verdict=%s conf=%.4f analyzed_s=%s latency_ms=%.1f",
         _user,
         model,
         label,
         confidence,
-        windows_analyzed,
         seconds_analyzed,
         latency_ms,
     )
@@ -1167,7 +967,7 @@ async def detect(
         model=model,
         latency_ms=round(latency_ms, 2),
         audio_hash=audio_hash,
-        windows_analyzed=windows_analyzed,
+        windows_analyzed=1,
         seconds_analyzed=seconds_analyzed,
         explanation=explanation,
     )
@@ -1703,14 +1503,8 @@ async def explain(
         explanation = _explain_classical(path)
     else:
         wav = _load_wav_mono16k(path)
-        label, confidence, seconds_analyzed, used_model = _detect_ssl_tensor(wav, str(model))
-        model = ModelType(used_model)
-        # After fallback, model may now be wav2vec2_spoof (a HF hub model, not a
-        # PyTorch module) — use the correct explainer for the actual model used.
-        if model == ModelType.wav2vec2_spoof:
-            explanation = _explain_hf(path, str(model))
-        else:
-            explanation = _explain_ssl_fast(path, str(model))
+        label, confidence, seconds_analyzed = _detect_ssl_tensor(wav, str(model))
+        explanation = _explain_ssl_fast(path, str(model))
     if explanation is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

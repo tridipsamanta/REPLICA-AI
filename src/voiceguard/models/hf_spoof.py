@@ -2,15 +2,12 @@
 
 Uses a pretrained wav2vec2 audio-classification pipeline from the HuggingFace
 Hub. The model genuinely separates real speech from TTS / voice clones when
-loaded correctly. NO hardcoded fallback scores — if the model cannot load,
-errors propagate so the caller gets a real diagnostic.
+loaded. If the model cannot load, errors propagate loudly.
 """
 
 from __future__ import annotations
 
 import logging
-import socket
-
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -23,26 +20,19 @@ def _norm_label(raw: str) -> str:
     """Map a model's class label onto VoiceGuard's {'real','fake'} vocabulary.
 
     For alexandreacff/wav2vec2-large-ft-fake-detection the model config labels
-    are literally "real" and "fake", which map directly.  Other models may use
-    "bonafide"/"spoof" or "LABEL_0"/"LABEL_1" — handle all known variants.
+    are literally "real" and "fake", which map directly.
     """
     s = raw.strip().lower()
     if any(k in s for k in ("fake", "spoof", "ai", "synth", "clone")):
         return "fake"
     if any(k in s for k in ("real", "human", "bona", "genuine")):
         return "real"
-    # Unknown label: log it so we can add a mapping, default conservatively
     logger.warning("Unknown model label '%s' — defaulting to 'fake'", raw)
     return "fake"
 
 
 class HFSpoofDetector:
-    """Lazy wrapper around a HuggingFace audio-classification pipeline.
-
-    The pipeline is loaded once and cached for the lifetime of the process.
-    If loading fails, the error is stored and re-raised on subsequent calls
-    instead of returning hardcoded scores.
-    """
+    """Lazy wrapper around a HuggingFace audio-classification pipeline."""
 
     def __init__(self, model_id: str = DEFAULT_MODEL_ID) -> None:
         self.model_id = model_id
@@ -55,47 +45,45 @@ class HFSpoofDetector:
         if self._load_error is not None:
             raise self._load_error
 
-        # Quick network check — avoids 30s+ HF retry loops when offline
-        is_online = False
-        try:
-            with socket.create_connection(("huggingface.co", 443), timeout=1.0):
-                is_online = True
-        except Exception:
-            pass
-
         try:
             import torch
-            from transformers import pipeline
+            from transformers import (
+                AutoFeatureExtractor,
+                AutoModelForAudioClassification,
+                pipeline,
+            )
 
             device = 0 if torch.cuda.is_available() else -1
 
-            # Try local cache first (fast, no network)
+            # Try loading from local cache first (no network request needed)
             try:
+                feature_extractor = AutoFeatureExtractor.from_pretrained(
+                    self.model_id, local_files_only=True
+                )
+                model = AutoModelForAudioClassification.from_pretrained(
+                    self.model_id, local_files_only=True
+                )
                 self._pipe = pipeline(
                     "audio-classification",
-                    model=self.model_id,
+                    model=model,
+                    feature_extractor=feature_extractor,
                     device=device,
-                    model_kwargs={"local_files_only": True},
                 )
                 logger.info("HF model '%s' loaded from local cache", self.model_id)
                 return self._pipe
             except Exception:
-                if not is_online:
-                    err = RuntimeError(
-                        f"HF model '{self.model_id}' not in local cache and "
-                        f"huggingface.co is unreachable. Pre-download the model "
-                        f"during Docker build or set HF_HOME."
-                    )
-                    self._load_error = err
-                    raise err
+                pass
 
-            # Download from hub
+            # Download or load from HuggingFace Hub
+            feature_extractor = AutoFeatureExtractor.from_pretrained(self.model_id)
+            model = AutoModelForAudioClassification.from_pretrained(self.model_id)
             self._pipe = pipeline(
                 "audio-classification",
-                model=self.model_id,
+                model=model,
+                feature_extractor=feature_extractor,
                 device=device,
             )
-            logger.info("HF model '%s' downloaded and loaded", self.model_id)
+            logger.info("HF model '%s' loaded successfully", self.model_id)
             return self._pipe
 
         except Exception as exc:
@@ -114,14 +102,13 @@ class HFSpoofDetector:
         Returns (label, confidence, detail) where:
           - label: 'real' or 'fake'
           - confidence: the winning class probability from the model [0.5, 1.0]
-          - detail: dict with 'real_prob' and 'fake_prob' from actual model output
+          - detail: dict with 'real_prob', 'fake_prob', 'raw_results'
         """
-        pipe = self._pipeline()  # raises if model unavailable — no silent fallback
+        pipe = self._pipeline()
         audio_f32 = np.asarray(audio, dtype=np.float32)
 
         results = pipe({"array": audio_f32, "sampling_rate": int(sr)})
 
-        # Build probability dict from all model output classes
         prob_by_label: dict[str, float] = {}
         for r in results:
             norm = _norm_label(r["label"])
@@ -130,13 +117,11 @@ class HFSpoofDetector:
         real_prob = prob_by_label.get("real", 0.0)
         fake_prob = prob_by_label.get("fake", 0.0)
 
-        # Total probability mass normalization (if multiple sublabels)
         total_p = real_prob + fake_prob
         if total_p > 0:
             real_prob /= total_p
             fake_prob /= total_p
 
-        # The winning label is whichever has higher probability
         if fake_prob >= real_prob:
             label, confidence = "fake", fake_prob
         else:
