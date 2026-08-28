@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { ThemeProvider } from './context/ThemeContext'
 import Navbar, { type Tab } from './components/Navbar'
 import Footer from './components/Footer'
-import { LoginModal } from './components/LoginControl'
 import DetectTab from './pages/DetectTab'
 import LiveTab from './pages/LiveTab'
 import GenerateTab from './pages/GenerateTab'
@@ -12,7 +11,6 @@ import AboutTab from './pages/AboutTab'
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('detect')
-  const [loginModalOpen, setLoginModalOpen] = useState(false)
 
   return (
     <ThemeProvider>
@@ -22,7 +20,6 @@ export default function App() {
         <Navbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
-          onOpenLogin={() => setLoginModalOpen(true)}
         />
 
         {/* Main Workspace Container */}
@@ -39,16 +36,6 @@ export default function App() {
 
         {/* Footer (Hidden on Live Monitoring HUD to ensure 100vh zero-scroll fit) */}
         {activeTab !== 'live' && <Footer />}
-
-        {/* Global Authentication Modal */}
-        <LoginModal
-          isOpen={loginModalOpen}
-          onClose={() => setLoginModalOpen(false)}
-          onSuccess={() => {
-            setLoginModalOpen(false)
-            window.location.reload()
-          }}
-        />
 
       </div>
     </ThemeProvider>

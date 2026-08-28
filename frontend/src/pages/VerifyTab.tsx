@@ -128,7 +128,7 @@ export default function VerifyTab() {
       if (e instanceof ApiError) {
         setError(
           e.status === 401
-            ? 'Authentication required. Please sign in with "Secure Access" in the top right header.'
+            ? 'Unable to process provenance verification request.'
             : e.message,
         )
       } else {

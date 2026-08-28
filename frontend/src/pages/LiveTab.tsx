@@ -6,7 +6,6 @@ import {
   ShieldCheck,
   Activity,
   Clock,
-  Lock,
   AlertTriangle,
   Cpu,
   Radio,
@@ -18,7 +17,6 @@ import {
   type StreamEvent,
   type StreamStatus,
 } from '../services/streamingService'
-import { hasToken } from '../config/apiConfig'
 
 const MAX_CHUNKS = 12
 
@@ -189,13 +187,6 @@ export default function LiveTab() {
             </div>
           )}
 
-          {!hasToken() && (
-            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 dark:text-amber-300 text-sm flex items-center gap-3">
-              <Lock className="w-5 h-5 text-amber-500 shrink-0" />
-              <span>Authentication required — Please sign in using "Secure Access" in the top right to enable live analysis.</span>
-            </div>
-          )}
-
           {/* Clean Landing Card */}
           <div className="replica-card p-10 sm:p-14 flex flex-col items-center justify-center text-center relative overflow-hidden space-y-6">
             <div className="w-20 h-20 rounded-3xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-500 flex items-center justify-center p-4 shadow-xl">
@@ -211,8 +202,7 @@ export default function LiveTab() {
 
             <button
               onClick={startStop}
-              disabled={!hasToken()}
-              className="flex items-center gap-3 px-8 py-4 rounded-2xl replica-btn-primary font-bold text-base shadow-lg transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-3 px-8 py-4 rounded-2xl replica-btn-primary font-bold text-base shadow-lg transition-all active:scale-95 cursor-pointer"
             >
               <Mic className="w-5 h-5" />
               <span>Start Monitoring</span>

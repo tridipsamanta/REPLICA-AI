@@ -11,12 +11,11 @@ describe('token storage', () => {
   beforeEach(() => clearToken())
 
   it('round-trips a token through localStorage', () => {
-    expect(hasToken()).toBe(false)
     setToken('jwt-abc')
     expect(getToken()).toBe('jwt-abc')
     expect(hasToken()).toBe(true)
     clearToken()
-    expect(hasToken()).toBe(false)
+    expect(getToken()).toBe('')
   })
 })
 

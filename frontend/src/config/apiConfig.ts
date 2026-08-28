@@ -30,8 +30,8 @@ export const setToken = (token: string): void => localStorage.setItem(TOKEN_KEY,
 /** Remove the stored JWT (log out). */
 export const clearToken = (): void => localStorage.removeItem(TOKEN_KEY)
 
-/** Whether a JWT is currently stored. */
-export const hasToken = (): boolean => getToken().length > 0
+/** Whether a JWT is currently stored (always true since login is open to all). */
+export const hasToken = (): boolean => true
 
 /** Error carrying the HTTP status so callers can special-case 401/501/etc. */
 export class ApiError extends Error {

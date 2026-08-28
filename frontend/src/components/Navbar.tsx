@@ -4,16 +4,12 @@ import {
   Activity,
   CheckCircle2,
   BarChart3,
-  LogOut,
-  UserCheck,
   Menu,
   X,
   Sun,
   Moon,
-  Lock,
   Info
 } from 'lucide-react'
-import { getToken, clearToken } from '../config/apiConfig'
 import { useTheme } from '../context/ThemeContext'
 
 export type Tab = 'detect' | 'live' | 'generate' | 'verify' | 'results' | 'about'
@@ -21,7 +17,6 @@ export type Tab = 'detect' | 'live' | 'generate' | 'verify' | 'results' | 'about
 interface NavbarProps {
   activeTab: Tab
   setActiveTab: (tab: Tab) => void
-  onOpenLogin: () => void
 }
 
 const TABS: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -32,8 +27,7 @@ const TABS: { id: Tab; label: string; icon: React.ComponentType<{ className?: st
   { id: 'about', label: 'About', icon: Info },
 ]
 
-export default function Navbar({ activeTab, setActiveTab, onOpenLogin }: NavbarProps) {
-  const [token, setToken] = useState<string | null>(getToken())
+export default function Navbar({ activeTab, setActiveTab }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
   const { theme, toggleTheme } = useTheme()
@@ -45,12 +39,6 @@ export default function Navbar({ activeTab, setActiveTab, onOpenLogin }: NavbarP
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
-
-  const handleLogout = () => {
-    clearToken()
-    setToken(null)
-    window.location.reload()
-  }
 
   return (
     <header
@@ -66,7 +54,7 @@ export default function Navbar({ activeTab, setActiveTab, onOpenLogin }: NavbarP
         <div className="flex items-center gap-3.5 shrink-0">
           <button
             onClick={() => setActiveTab('detect')}
-            className="flex items-center gap-3 group focus:outline-none"
+            className="flex items-center gap-3 group focus:outline-none cursor-pointer"
           >
             <img
               src="/logo2.png"
@@ -80,14 +68,14 @@ export default function Navbar({ activeTab, setActiveTab, onOpenLogin }: NavbarP
         </div>
 
         {/* Center: Navigation Tabs (Desktop Big Size) */}
-        <nav className="hidden xl:flex items-center gap-1.5 p-1.5 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-app)] shadow-sm">
+        <nav className="hidden md:flex items-center gap-1.5 p-1.5 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-app)] shadow-sm">
           {TABS.map(({ id, label, icon: Icon }) => {
             const isActive = activeTab === id
             return (
               <button
                 key={id}
                 onClick={() => setActiveTab(id)}
-                className={`relative px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold font-mono tracking-wide transition-all duration-200 flex items-center gap-2 ${
+                className={`relative px-4 lg:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold font-mono tracking-wide transition-all duration-200 flex items-center gap-2 cursor-pointer ${
                   isActive
                     ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/10'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
@@ -102,31 +90,16 @@ export default function Navbar({ activeTab, setActiveTab, onOpenLogin }: NavbarP
           })}
         </nav>
 
-        {/* Right: Premium Segmented Theme Toggle & Secure Access (Big Size) */}
-        <div className="hidden lg:flex items-center gap-4 shrink-0">
+        {/* Right: Engine Status Pill & Segmented Theme Switcher */}
+        <div className="hidden sm:flex items-center gap-3.5 shrink-0">
 
-          <nav className="flex xl:hidden items-center gap-1.5 p-1.5 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-app)] shadow-sm mr-2">
-            {TABS.map(({ id, label, icon: Icon }) => {
-              const isActive = activeTab === id
-              return (
-                <button
-                  key={id}
-                  onClick={() => setActiveTab(id)}
-                  className={`relative p-3 rounded-xl text-xs sm:text-sm font-bold font-mono tracking-wide transition-all duration-200 flex items-center gap-2 ${
-                    isActive
-                      ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/10'
-                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
-                  }`}
-                  title={label}
-                >
-                  <Icon className={`w-4.5 h-4.5 transition-colors ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-[var(--text-muted)]'}`} />
-                  <span className={`absolute bottom-0 left-1/2 -translate-x-1/2 h-[3px] bg-indigo-600 dark:bg-indigo-400 rounded-full shadow-[0_0_8px_rgba(91,95,239,0.8)] transition-all duration-300 ${isActive ? 'w-5 opacity-100' : 'w-0 opacity-0'}`} />
-                </button>
-              )
-            })}
-          </nav>
+          {/* Engine Status Pill */}
+          <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs sm:text-sm font-mono text-emerald-600 dark:text-emerald-400 font-extrabold shadow-sm">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Engine Active</span>
+          </div>
 
-          {/* Segmented Pill Theme Switcher (Big Size) */}
+          {/* Segmented Pill Theme Switcher */}
           <button
             onClick={toggleTheme}
             aria-label="Toggle Light/Dark Theme"
@@ -141,7 +114,7 @@ export default function Navbar({ activeTab, setActiveTab, onOpenLogin }: NavbarP
               }`}
             >
               <Sun className={`w-4 h-4 ${theme === 'light' ? 'text-emerald-500' : ''}`} />
-              <span className="hidden xl:inline">Light</span>
+              <span className="hidden lg:inline">Light</span>
             </div>
             <div
               className={`px-3 py-2 rounded-xl flex items-center gap-2 text-xs font-mono font-bold transition-all ${
@@ -151,44 +124,13 @@ export default function Navbar({ activeTab, setActiveTab, onOpenLogin }: NavbarP
               }`}
             >
               <Moon className={`w-4 h-4 ${theme === 'dark' ? 'text-indigo-400' : ''}`} />
-              <span className="hidden xl:inline">Dark</span>
+              <span className="hidden lg:inline">Dark</span>
             </div>
           </button>
-
-          {/* Engine Status Pill (Big Size) */}
-          <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs sm:text-sm font-mono text-emerald-600 dark:text-emerald-400 font-extrabold shadow-sm">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="hidden xl:inline">Engine Active</span>
-          </div>
-
-          {/* Account / Secure Access CTA (Big Size) */}
-          {token ? (
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-app)] text-xs sm:text-sm font-mono text-[var(--text-primary)] font-extrabold shadow-sm">
-                <UserCheck className="w-4 h-4 text-indigo-500" />
-                <span className="hidden sm:inline">Admin</span>
-              </div>
-              <button
-                onClick={handleLogout}
-                className="p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-app)] text-[var(--text-secondary)] hover:text-rose-500 hover:border-rose-500/30 transition-all shadow-sm"
-                title="Sign out"
-              >
-                <LogOut className="w-4.5 h-4.5" />
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={onOpenLogin}
-              className="flex items-center gap-2.5 px-6 py-3 rounded-xl replica-btn-primary font-bold text-xs sm:text-sm transition-all flex-shrink-0 shadow-md"
-            >
-              <Lock className="w-4 h-4" />
-              <span>Secure Access</span>
-            </button>
-          )}
         </div>
 
         {/* Mobile Right Controls */}
-        <div className="flex lg:hidden items-center gap-2 ml-auto">
+        <div className="flex sm:hidden items-center gap-2 ml-auto">
           <button
             onClick={toggleTheme}
             aria-label="Toggle Theme"
@@ -209,7 +151,7 @@ export default function Navbar({ activeTab, setActiveTab, onOpenLogin }: NavbarP
 
       {/* Mobile Drawer Menu */}
       {mobileMenuOpen && (
-        <div className="lg:hidden p-4 bg-[var(--navbar-scrolled)] backdrop-blur-[20px] border-b border-[var(--border-app)] space-y-3 animate-in fade-in slide-in-from-top-2 duration-200 shadow-xl">
+        <div className="md:hidden p-4 bg-[var(--navbar-scrolled)] backdrop-blur-[20px] border-b border-[var(--border-app)] space-y-3 animate-in fade-in slide-in-from-top-2 duration-200 shadow-xl">
           <div className="grid grid-cols-2 gap-2">
             {TABS.map(({ id, label, icon: Icon }) => (
               <button
@@ -231,26 +173,10 @@ export default function Navbar({ activeTab, setActiveTab, onOpenLogin }: NavbarP
           </div>
 
           <div className="pt-2 border-t border-[var(--border-app)] flex items-center justify-between">
-            {token ? (
-              <button
-                onClick={handleLogout}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-rose-500/10 text-rose-500 text-xs font-semibold border border-rose-500/20"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Sign Out</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => {
-                  onOpenLogin()
-                  setMobileMenuOpen(false)
-                }}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl replica-btn-primary text-white text-xs font-semibold"
-              >
-                <Lock className="w-4 h-4" />
-                <span>Secure Access</span>
-              </button>
-            )}
+            <div className="flex items-center gap-2 text-xs font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Engine Online & Ready</span>
+            </div>
           </div>
         </div>
       )}

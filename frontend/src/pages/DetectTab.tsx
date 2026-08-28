@@ -304,7 +304,7 @@ export default function DetectTab() {
       if (err instanceof ApiError) {
         setError(
           err.status === 401
-            ? 'Authentication required. Please sign in using "Secure Access" in the header.'
+            ? 'Unable to process detection request.'
             : err.message,
         )
       } else {

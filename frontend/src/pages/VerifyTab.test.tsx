@@ -46,9 +46,9 @@ describe('VerifyTab', () => {
     pickFile(container)
     fireEvent.click(screen.getByRole('button', { name: /verify provenance/i }))
     await waitFor(() => {
-      expect(screen.getByText(/VoiceGuard-generated/i)).toBeTruthy()
+      expect(screen.getByText(/REPLICA Provenance Detected/i)).toBeTruthy()
     })
-    expect(screen.getByText(/detected \(corr 0\.1234\)/i)).toBeTruthy()
+    expect(screen.getByText(/correlation 0\.1234/i)).toBeTruthy()
     expect(verifyMock).toHaveBeenCalledOnce()
   })
 
