@@ -1,4 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
+import {
+  FlaskConical,
+  ShieldCheck,
+  Search,
+  CheckCircle2,
+  AlertTriangle,
+  Download,
+  Volume2
+} from 'lucide-react'
 import { getEngines, synthesize, type EngineInfo } from '../services/synthesisService'
 import { detectAudio, type DetectionResult } from '../services/detectionService'
 import { apiFetch, ApiError } from '../config/apiConfig'
@@ -53,11 +62,11 @@ export default function GenerateTab() {
       if (e instanceof ApiError) {
         setError(
           e.status === 501
-            ? `The "${engine?.label ?? engineName}" engine is not installed on this instance.`
+            ? `The "${engine?.label ?? engineName}" engine is not installed on this server.`
             : e.message,
         )
       } else {
-        setError('Could not reach the synthesis API. Please try again in a moment.')
+        setError('Could not reach synthesis backend API.')
       }
     } finally {
       setLoading(false)
@@ -71,162 +80,232 @@ export default function GenerateTab() {
     try {
       const res = await apiFetch(audioUrl.replace(/^\/api/, ''))
       const blob = await res.blob()
-      const file = new File([blob], 'synth.wav', { type: 'audio/wav' })
+      const file = new File([blob], 'synthetic_sample.wav', { type: 'audio/wav' })
       setVerdict(await detectAudio(file))
     } catch {
-      setError('Could not run the detector on the generated clip.')
+      setError('Could not run the detector on the generated sample.')
     } finally {
       setTesting(false)
     }
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 max-w-5xl mx-auto">
+
+      {/* Header */}
       <div>
-        <h2 className="text-xl font-semibold text-white mb-1">Synthesise Voice</h2>
-        <p className="text-sm text-gray-400">
-          Preset TTS or zero-shot voice cloning. Every clip is spectrally watermarked and
-          flagged as AI-generated, then can be tested against the detector.
+        <span className="text-[11px] font-mono font-semibold uppercase tracking-widest text-indigo-500 dark:text-indigo-400 px-2.5 py-1 rounded-md bg-indigo-500/10 border border-indigo-500/20">
+          DEFENSIVE BENCHMARKING
+        </span>
+        <h1 className="text-3xl sm:text-4xl font-extrabold text-[var(--text-primary)] tracking-tight mt-3">
+          Synthetic Voice Lab
+        </h1>
+        <p className="text-sm text-[var(--text-secondary)] mt-2 max-w-2xl">
+          Generate controlled synthetic speech for security testing and detector evaluation.
         </p>
       </div>
 
-      <div>
-        <label className="block text-sm text-gray-400 mb-2">Text to synthesise</label>
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={4}
-          maxLength={2000}
-          placeholder="Enter text here (max 2000 characters)…"
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-gray-100 placeholder-gray-600 resize-none focus:outline-none focus:border-indigo-500"
-        />
-        <p className="text-xs text-gray-600 mt-1 text-right">{text.length}/2000</p>
+      {/* Security Purpose Notice */}
+      <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-500 dark:text-indigo-300 text-xs flex items-center gap-3">
+        <ShieldCheck className="w-5 h-5 text-indigo-500 shrink-0" />
+        <span>
+          <b>Defensive Research Notice:</b> Generated audio is automatically spectrally watermarked and registered in REPLICA to evaluate model robustness against synthetic voice attacks.
+        </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      {/* Main Form Card */}
+      <div className="replica-card p-6 sm:p-8 space-y-6">
+
+        {/* Text Input Area */}
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Engine</label>
-          <select
-            value={engineName}
-            onChange={(e) => {
-              setEngineName(e.target.value)
-              const en = engines.find((x) => x.name === e.target.value)
-              if (en?.preset_voices[0]) setVoice(en.preset_voices[0])
-            }}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-gray-300 text-sm"
-          >
-            {engines.map((e) => (
-              <option key={e.name} value={e.name} disabled={!e.available}>
-                {e.label}
-                {e.available ? '' : ' — not installed'}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider font-mono">
+              Text to Synthesize
+            </label>
+            <span className="text-xs font-mono text-[var(--text-muted)]">
+              {text.length}/2000 characters
+            </span>
+          </div>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={4}
+            maxLength={2000}
+            placeholder="Type or paste the speech prompt for synthetic audio generation..."
+            className="w-full bg-[var(--bg-input)] border border-[var(--border-app)] rounded-xl p-4 text-[var(--text-primary)] placeholder-[var(--text-muted)] resize-none focus:outline-none focus:border-indigo-500 text-sm font-sans leading-relaxed"
+          />
         </div>
-        {engine && engine.preset_voices.length > 0 ? (
+
+        {/* Engine and Voice Pickers */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Voice</label>
+            <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1.5 uppercase tracking-wider font-mono">
+              Voice Engine
+            </label>
             <select
-              value={voice}
-              onChange={(e) => setVoice(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-gray-300 text-sm"
+              value={engineName}
+              onChange={(e) => {
+                setEngineName(e.target.value)
+                const en = engines.find((x) => x.name === e.target.value)
+                if (en?.preset_voices[0]) setVoice(en.preset_voices[0])
+              }}
+              className="w-full bg-[var(--bg-input)] border border-[var(--border-app)] rounded-xl px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-indigo-500 font-medium"
             >
-              {engine.preset_voices.map((v) => (
-                <option key={v} value={v}>
-                  {v}
+              {engines.map((e) => (
+                <option key={e.name} value={e.name} disabled={!e.available}>
+                  {e.label} {e.available ? '' : ' — Not installed'}
                 </option>
               ))}
             </select>
           </div>
-        ) : (
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Language</label>
-            <select
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-gray-300 text-sm"
-            >
-              {(engine?.languages ?? ['en']).map((l) => (
-                <option key={l} value={l}>
-                  {l}
-                </option>
-              ))}
-            </select>
+
+          {engine && engine.preset_voices.length > 0 ? (
+            <div>
+              <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1.5 uppercase tracking-wider font-mono">
+                Voice Preset
+              </label>
+              <select
+                value={voice}
+                onChange={(e) => setVoice(e.target.value)}
+                className="w-full bg-[var(--bg-input)] border border-[var(--border-app)] rounded-xl px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-indigo-500 font-medium"
+              >
+                {engine.preset_voices.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1.5 uppercase tracking-wider font-mono">
+                Language
+              </label>
+              <select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+                className="w-full bg-[var(--bg-input)] border border-[var(--border-app)] rounded-xl px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-indigo-500 font-medium"
+              >
+                {(engine?.languages ?? ['en']).map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        {/* Zero-Shot Reference Voice Upload (if required by engine) */}
+        {needsRef && (
+          <div className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-app)] space-y-3">
+            <label className="block text-xs font-semibold text-[var(--text-primary)] font-mono uppercase">
+              Reference Audio Sample (≥ 3 seconds)
+            </label>
+            <input
+              type="file"
+              accept="audio/*"
+              onChange={(e) => setReference(e.target.files?.[0] ?? null)}
+              className="block w-full text-xs text-[var(--text-secondary)] file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 file:font-semibold"
+            />
+            <label className="flex items-start gap-2.5 text-xs text-[var(--text-secondary)] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                className="mt-0.5 rounded border-[var(--border-app)] text-indigo-600 accent-indigo-600"
+              />
+              <span>
+                I confirm authorization to utilize this sample for research and model detector evaluation purposes only.
+              </span>
+            </label>
           </div>
         )}
+
+        {/* Generate Button */}
+        <button
+          onClick={handleSynthesize}
+          disabled={!canSubmit}
+          className="w-full flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-sm tracking-wide shadow-lg shadow-indigo-600/25 transition-all duration-200"
+        >
+          {loading ? (
+            <span className="flex items-center gap-2">
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <span>Generating synthetic audio...</span>
+            </span>
+          ) : (
+            <>
+              <FlaskConical className="w-4 h-4" />
+              <span>{needsRef ? 'Clone & Synthesize Speech' : 'Synthesize Speech'}</span>
+            </>
+          )}
+        </button>
       </div>
 
-      {needsRef && (
-        <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-4 space-y-3">
-          <label className="block text-sm text-gray-300">
-            Reference voice (≥ 3s) — the voice to clone
-          </label>
-          <input
-            type="file"
-            accept="audio/*"
-            onChange={(e) => setReference(e.target.files?.[0] ?? null)}
-            className="block w-full text-sm text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white hover:file:bg-indigo-700"
-          />
-          <label className="flex items-start gap-2 text-xs text-gray-400">
-            <input
-              type="checkbox"
-              checked={consent}
-              onChange={(e) => setConsent(e.target.checked)}
-              className="mt-0.5"
-            />
-            <span>
-              I am authorised to clone this voice and will use the watermarked output only for
-              testing and research, not impersonation.
-            </span>
-          </label>
-        </div>
-      )}
-
-      <button
-        onClick={handleSynthesize}
-        disabled={!canSubmit}
-        className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-lg transition-colors"
-      >
-        {loading ? 'Generating…' : needsRef ? 'Clone & Synthesise' : 'Synthesise'}
-      </button>
-
+      {/* Error Display */}
       {error && (
-        <div className="bg-yellow-900/40 border border-yellow-700 rounded-lg p-4 text-yellow-300 text-sm">
-          {error}
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 text-sm flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
+      {/* Generated Audio Result */}
       {audioUrl && (
-        <div className="bg-gray-800 rounded-xl p-6 space-y-3">
-          <p className="text-sm text-gray-300 font-medium">Synthesised audio</p>
-          <audio controls src={audioUrl} className="w-full" />
-          {watermarkId && (
-            <div className="flex items-center gap-2 text-xs text-green-400">
-              <span>✓</span>
-              <span>Spectral watermark embedded · ID: {watermarkId}</span>
-            </div>
-          )}
-          <button
-            onClick={handleTestDetector}
-            disabled={testing}
-            className="text-sm bg-gray-700 hover:bg-gray-600 disabled:opacity-60 text-gray-100 font-medium py-2 px-4 rounded-lg transition-colors"
-          >
-            {testing ? 'Testing…' : '🔎 Test against detector'}
-          </button>
-          {verdict && (
-            <div
-              className={`text-sm rounded-lg p-3 ${
-                verdict.label === 'fake'
-                  ? 'bg-red-900/40 border border-red-700 text-red-300'
-                  : 'bg-green-900/40 border border-green-700 text-green-300'
-              }`}
+        <div className="replica-card p-6 space-y-5 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <Volume2 className="w-5 h-5 text-indigo-500" />
+              <span>Synthesized Speech Output</span>
+            </h3>
+            {watermarkId && (
+              <span className="px-3 py-1 rounded-full text-xs font-mono bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Watermark ID: {watermarkId}</span>
+              </span>
+            )}
+          </div>
+
+          <audio controls src={audioUrl} className="w-full rounded-lg bg-[var(--bg-input)] p-2 border border-[var(--border-app)]" />
+
+          <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+            <a
+              href={audioUrl}
+              download="replica_synthetic_sample.wav"
+              className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-elevated)] border border-[var(--border-app)] text-xs font-semibold text-[var(--text-primary)] transition-colors"
             >
-              Detector verdict: <b>{verdict.label.toUpperCase()}</b> ·{' '}
-              {Math.round(verdict.confidence * 100)}% confidence · model {verdict.model}
+              <Download className="w-4 h-4 text-indigo-500" />
+              <span>Download Audio</span>
+            </a>
+
+            <button
+              onClick={handleTestDetector}
+              disabled={testing}
+              className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-500/30 text-xs font-semibold text-indigo-500 dark:text-indigo-400 transition-colors"
+            >
+              <Search className="w-4 h-4 text-indigo-500" />
+              <span>{testing ? 'Evaluating against detector...' : 'Test Against REPLICA Detector'}</span>
+            </button>
+          </div>
+
+          {/* Detector Evaluation Verdict */}
+          {verdict && (
+            <div className={`p-4 rounded-xl border ${
+              verdict.label === 'fake'
+                ? 'bg-rose-500/10 border-rose-500/30 text-rose-500'
+                : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'
+            } text-xs space-y-1`}>
+              <p className="font-bold text-sm">
+                Detector Verdict: <span className="uppercase font-mono">{verdict.label}</span>
+              </p>
+              <p className="text-[var(--text-secondary)]">
+                Confidence: <span className="font-mono font-semibold">{Math.round(verdict.confidence * 100)}%</span> · Model: <span className="font-mono">{verdict.model}</span>
+              </p>
             </div>
           )}
         </div>
       )}
+
     </div>
   )
 }

@@ -121,13 +121,19 @@ async def test_detect_model_field(auth_client, wav_bytes):
 
 
 @pytest.mark.asyncio
-async def test_detect_model_without_checkpoint(auth_client, wav_bytes):
+async def test_detect_model_without_checkpoint_falls_back(auth_client, wav_bytes):
+    """When a model checkpoint is missing, /detect gracefully falls back to
+    wav2vec2_spoof (HuggingFace Hub) instead of returning 503."""
     resp = await auth_client.post(
         "/detect",
         files={"file": ("test.wav", wav_bytes, "audio/wav")},
         params={"model": "dsfnet"},
     )
-    assert resp.status_code == 503
+    # Falls back to wav2vec2_spoof instead of 503
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["label"] in ("real", "fake")
+    assert data["model"] == "wav2vec2_spoof"  # reports which model actually ran
 
 
 # ── Health test ────────────────────────────────────────────────────────────────
@@ -164,13 +170,17 @@ async def test_explain_classical_uses_occlusion(auth_client, wav_bytes):
 
 
 @pytest.mark.asyncio
-async def test_explain_missing_checkpoint_returns_503(auth_client, wav_bytes):
+async def test_explain_model_without_checkpoint_falls_back(auth_client, wav_bytes):
+    """When a model checkpoint is missing, /explain falls back to wav2vec2_spoof."""
     resp = await auth_client.post(
         "/explain",
         files={"file": ("test.wav", wav_bytes, "audio/wav")},
         params={"model": "dsfnet"},
     )
-    assert resp.status_code == 503
+    # Falls back to wav2vec2_spoof — explain uses occlusion on the fallback model
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["method"] == "occlusion"
 
 
 # ── Synthesis / forensics ──────────────────────────────────────────────────────

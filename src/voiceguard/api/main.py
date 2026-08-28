@@ -178,8 +178,14 @@ ACCEPTED_CONTENT_TYPES = {
     "audio/flac",
     "audio/ogg",
     "application/ogg",
+    "audio/webm",
+    "video/webm",
+    "audio/mp4",
+    "audio/m4a",
+    "audio/x-m4a",
+    "audio/aac",
 }
-ACCEPTED_SUFFIXES = {".wav", ".mp3", ".flac", ".ogg", ".oga"}
+ACCEPTED_SUFFIXES = {".wav", ".mp3", ".flac", ".ogg", ".oga", ".webm", ".m4a", ".mp4", ".aac"}
 CONTENT_TYPE_SUFFIXES = {
     "audio/wav": ".wav",
     "audio/x-wav": ".wav",
@@ -187,6 +193,12 @@ CONTENT_TYPE_SUFFIXES = {
     "audio/flac": ".flac",
     "audio/ogg": ".ogg",
     "application/ogg": ".ogg",
+    "audio/webm": ".webm",
+    "video/webm": ".webm",
+    "audio/mp4": ".m4a",
+    "audio/m4a": ".m4a",
+    "audio/x-m4a": ".m4a",
+    "audio/aac": ".aac",
 }
 MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024  # 100MB
 _UPLOAD_CHUNK = 1024 * 1024  # 1MB
@@ -198,22 +210,29 @@ MAX_AUDIO_SECONDS = float(os.environ.get("VG_MAX_AUDIO_SECONDS", "600"))
 
 
 def _sniff_is_audio(head: bytes) -> bool:
-    """True when *head* starts like one of the advertised formats (WAV/FLAC/MP3/OGG).
+    """True when *head* starts like one of the advertised formats (WAV/FLAC/MP3/OGG/WEBM/MP4/M4A).
 
     Extension and Content-Type are attacker-controlled; the bytes are what
-    libsndfile will actually parse, so gate on them. MP3 is ID3-tagged or starts
+    libsndfile/torchaudio will actually parse, so gate on them. MP3 is ID3-tagged or starts
     straight at an MPEG frame sync (0xFFEx); OGG containers always open with the
-    "OggS" capture pattern.
+    "OggS" capture pattern; WebM containers open with EBML header 0x1A 0x45 0xDF 0xA3;
+    MP4/M4A containers start with "ftyp" at offset 4.
     """
-    if len(head) < 12:
+    if len(head) < 4:
         return False
-    if head[:4] == b"RIFF" and head[8:12] == b"WAVE":
+    if head[:4] == b"RIFF" and len(head) >= 12 and head[8:12] == b"WAVE":
         return True
     if head[:4] == b"fLaC":
         return True
     if head[:4] == b"OggS":
         return True
     if head[:3] == b"ID3":
+        return True
+    if head[:4] == b"\x1a\x45\xdf\xa3":  # EBML header for WebM/MKV
+        return True
+    if len(head) >= 8 and head[4:8] == b"ftyp":  # MP4 / M4A container
+        return True
+    if head[:2] in (b"\xff\xf1", b"\xff\xf9"):  # ADTS AAC
         return True
     return head[0] == 0xFF and (head[1] & 0xE0) == 0xE0  # MPEG frame sync
 
@@ -234,7 +253,7 @@ async def save_upload(upload: UploadFile) -> tuple[str, str]:
     if ctype not in ACCEPTED_CONTENT_TYPES and suffix not in ACCEPTED_SUFFIXES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Unsupported media type — upload WAV, MP3, FLAC, or OGG audio.",
+            detail="Unsupported media type — upload WAV, MP3, FLAC, OGG, WEBM, or M4A audio.",
         )
 
     fd, path = make_temp_audio_file(suffix=suffix)
@@ -246,11 +265,11 @@ async def save_upload(upload: UploadFile) -> tuple[str, str]:
             while chunk := await upload.read(_UPLOAD_CHUNK):
                 if not sniffed:
                     # Magic bytes, not just extension/Content-Type: the bytes are
-                    # what libsndfile (CVE history) will actually parse.
+                    # what libsndfile/torchaudio will actually parse.
                     if not _sniff_is_audio(chunk[:12]):
                         raise HTTPException(
                             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                            detail="File content is not WAV, MP3, FLAC, or OGG audio.",
+                            detail="File content is not WAV, MP3, FLAC, OGG, WEBM, or M4A audio.",
                         )
                     sniffed = True
                 total += len(chunk)
@@ -264,7 +283,7 @@ async def save_upload(upload: UploadFile) -> tuple[str, str]:
         if not sniffed:  # empty body never entered the loop
             raise HTTPException(
                 status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail="Empty upload — send WAV, MP3, FLAC, or OGG audio.",
+                detail="Empty upload — send WAV, MP3, FLAC, OGG, WEBM, or M4A audio.",
             )
     except HTTPException:
         Path(path).unlink(missing_ok=True)  # drop the partial file
@@ -278,47 +297,62 @@ async def save_upload(upload: UploadFile) -> tuple[str, str]:
 
 
 def _probe_audio(path: str) -> dict:
-    """Header-only probe via soundfile: duration/sample-rate/format without a full
-    decode. Rejects clips over MAX_AUDIO_SECONDS (413) before any model work —
-    synchronous CPU inference on an unbounded clip would 504 behind nginx."""
+    """Probe audio parameters via soundfile with torchaudio fallback."""
     import soundfile as sf
 
     try:
         info = sf.info(path)
-    except (RuntimeError, sf.LibsndfileError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Could not decode audio — upload valid WAV, MP3, FLAC, or OGG.",
-        ) from exc
-    if info.duration > MAX_AUDIO_SECONDS:
+        duration = info.duration
+        samplerate = info.samplerate
+        channels = info.channels
+        fmt = f"{info.format}/{info.subtype}"
+    except (RuntimeError, sf.LibsndfileError):
+        try:
+            import torchaudio
+            info_ta = torchaudio.info(path)
+            duration = info_ta.num_frames / info_ta.sample_rate
+            samplerate = info_ta.sample_rate
+            channels = info_ta.num_channels
+            fmt = info_ta.encoding or "WEBM/MP4"
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail="Could not decode audio — upload valid WAV, MP3, FLAC, OGG, WEBM, or M4A.",
+            ) from exc
+
+    if duration > MAX_AUDIO_SECONDS:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=(
-                f"Audio is {info.duration:.0f}s long; the analysis limit is "
+                f"Audio is {duration:.0f}s long; the analysis limit is "
                 f"{MAX_AUDIO_SECONDS:.0f}s. Trim the clip or raise VG_MAX_AUDIO_SECONDS."
             ),
         )
     return {
-        "duration_s": round(info.duration, 2),
-        "sample_rate": info.samplerate,
-        "channels": info.channels,
-        "format": f"{info.format}/{info.subtype}",
+        "duration_s": round(duration, 2),
+        "sample_rate": samplerate,
+        "channels": channels,
+        "format": fmt,
     }
 
 
 def _read_audio(path: str) -> tuple[np.ndarray, int]:
-    """Read an audio file to (mono float32 array, sample_rate) via soundfile.
-
-    soundfile (libsndfile) handles WAV/FLAC/OGG and MP3 (libsndfile ≥ 1.1) without
-    the optional TorchCodec backend that newer ``torchaudio.load`` requires — so
-    this works identically in CI and on the deploy host.
-    """
+    """Read an audio file to (mono float32 array, sample_rate) via soundfile or torchaudio."""
     import soundfile as sf
 
-    data, sr = sf.read(path, dtype="float32", always_2d=False)
+    try:
+        data, sr = sf.read(path, dtype="float32", always_2d=False)
+    except Exception:
+        import torchaudio
+        wav, sr = torchaudio.load(path)
+        data = wav.numpy()
+        if data.ndim > 1:
+            data = data.mean(axis=0)
+
     if data.ndim > 1:
         data = data.mean(axis=1)  # mono
     return np.ascontiguousarray(data, dtype=np.float32), sr
+
 
 
 def _detect_classical(path: str) -> tuple[str, float]:
@@ -438,22 +472,36 @@ def _ssl_fake_prob(model, wav, model_key: str) -> float:
         return float(torch.softmax(model(inp), dim=-1)[0, 1])
 
 
-def _detect_ssl_tensor(wav, model_key: str) -> tuple[str, float, float]:
+def _detect_ssl_tensor(wav, model_key: str) -> tuple[str, float, float, str]:
     """Single-pass SSL detection on the clip from its natural start.
 
-    Returns (label, confidence, seconds_analyzed). Earlier sliding-window
-    aggregations (max, then mean) both misclassified real recordings because
-    mid-utterance windows are out-of-distribution for the detector; the whole
-    clip in one pass matches the regime the model's official EER and held-out
-    real-pass were validated under. seconds_analyzed = min(duration,
-    VG_SCORE_SECONDS) so callers and forensic reports can disclose truncation.
+    Returns (label, confidence, seconds_analyzed, used_model_key). When the
+    requested checkpoint is unavailable, falls back to wav2vec2_spoof (the
+    HuggingFace Hub anti-spoofing detector) — the same strategy the live
+    streaming path uses. used_model_key tells callers which model actually ran.
     """
     model = registry.load(model_key)
+    used_key = model_key
     if model is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Model '{model_key}' checkpoint not found. Set {model_key.upper()}_PATH.",
+        # Fall back to the working HuggingFace hub detector instead of 503.
+        logger.warning(
+            "checkpoint for '%s' unavailable — falling back to wav2vec2_spoof", model_key
         )
+        fallback = registry.load("wav2vec2_spoof")
+        if fallback is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    f"Model '{model_key}' checkpoint not found (set {model_key.upper()}_PATH) "
+                    "and the wav2vec2_spoof fallback could not load either."
+                ),
+            )
+        # wav2vec2_spoof works on raw arrays; convert tensor back.
+        scored = wav[..., : int(_SCORE_MAX_S * 16000)]
+        _guard_audio_quality(scored)
+        audio_np = scored.squeeze(0).numpy()
+        label, confidence = _detect_hf_array(audio_np, 16000, "wav2vec2_spoof")
+        return label, round(confidence, 4), round(scored.shape[-1] / 16000, 2), "wav2vec2_spoof"
     # Guard the region that will actually be scored, not the whole clip — a long
     # recording with a near-silent first VG_SCORE_SECONDS must 422, not let the
     # model confidently call silence "fake".
@@ -462,10 +510,10 @@ def _detect_ssl_tensor(wav, model_key: str) -> tuple[str, float, float]:
     fake_prob = _ssl_fake_prob(model, wav, model_key)
     label = "fake" if fake_prob >= 0.5 else "real"
     confidence = fake_prob if label == "fake" else 1.0 - fake_prob
-    return label, round(confidence, 4), round(scored.shape[-1] / 16000, 2)
+    return label, round(confidence, 4), round(scored.shape[-1] / 16000, 2), used_key
 
 
-def _detect_ssl(path: str, model_key: str) -> tuple[str, float, int]:
+def _detect_ssl(path: str, model_key: str) -> tuple[str, float, int, str]:
     return _detect_ssl_tensor(_load_wav_mono16k(path), model_key)
 
 
@@ -822,10 +870,19 @@ async def detect(
     else:
         # Load the waveform once and share it between detection and attribution.
         wav = _load_wav_mono16k(path)
-        label, confidence, seconds_analyzed = _detect_ssl_tensor(wav, str(model))
-        # Fast forward-only occlusion instead of ~25× backprop Integrated Gradients
-        # (which takes >60s on CPU for a 300M-param SSL model).
-        explanation = _explain_ssl_fast(path, str(model)) if explain else None
+        label, confidence, seconds_analyzed, used_model = _detect_ssl_tensor(wav, str(model))
+        # Update model to reflect which detector actually ran (may differ from
+        # the requested model when a checkpoint is unavailable and we fell back).
+        model = ModelType(used_model)
+        # After fallback, model may now be wav2vec2_spoof (a HF hub model, not a
+        # PyTorch module) — use the correct explainer for the actual model used.
+        if explain:
+            if model == ModelType.wav2vec2_spoof:
+                explanation = _explain_hf(path, str(model))
+            else:
+                explanation = _explain_ssl_fast(path, str(model))
+        else:
+            explanation = None
 
     if explanation is not None:
         _attach_narrative(explanation, label, confidence, str(model), seconds_analyzed)
@@ -1191,22 +1248,14 @@ async def websocket_stream(websocket: WebSocket, token: str = ""):
 
     import asyncio
 
-    # The detector is only reliable on audio scored from the recording's natural
-    # start (see _ssl_fake_prob) — a mic stream's natural start is the moment the
-    # user hit Start. So each verdict re-scores the growing prefix of the session
-    # (first at 3s, then every ~2s), capped at VG_WS_SCORE_SECONDS of audio (CPU
-    # cost grows with prefix length). The verdict that covers the full cap is sent
-    # with final=true and scoring stops; the connection stays open only so the
-    # session/rate limits keep being enforced.
+    # Use a sliding window buffer for continuous live audio monitoring.
     first_score_bytes = 3 * _WS_PCM_BYTES_PER_S
     stride_bytes = 2 * _WS_PCM_BYTES_PER_S
-    cap_s = _score_seconds_env("VG_WS_SCORE_SECONDS", 15.0)
-    # Even-align so a prefix slice is always whole int16 samples.
-    score_cap_bytes = max(int(cap_s * _WS_PCM_BYTES_PER_S) & ~1, first_score_bytes)
+    window_bytes = 4 * _WS_PCM_BYTES_PER_S  # 4-second sliding window for active inference
+    max_buffer_bytes = 30 * _WS_PCM_BYTES_PER_S  # bound memory to ~30s
     buffer = bytearray()
     window_id = 0
     next_score_at = first_score_bytes
-    verdict_final = False
     started = time.monotonic()
     received = 0
 
@@ -1222,21 +1271,25 @@ async def websocket_stream(websocket: WebSocket, token: str = ""):
             if received > _WS_BURST_BYTES + elapsed * _WS_PCM_BYTES_PER_S * _WS_RATE_SLACK:
                 await websocket.close(code=1008)  # faster than any real microphone
                 return
-            if len(buffer) < score_cap_bytes:
-                buffer.extend(data)
-            if verdict_final or received < next_score_at:
+
+            buffer.extend(data)
+            if len(buffer) > max_buffer_bytes:
+                buffer = buffer[-max_buffer_bytes:]
+
+            if received < next_score_at:
                 continue
 
-            # Coalesce overdue milestones: score the freshest prefix once instead
-            # of replaying every stale 2s boundary after a burst or a slow pass.
-            scored_to = min(received, score_cap_bytes, len(buffer)) & ~1
+            # Extract the most recent audio window (up to 4s) for active model scoring
+            window_chunk = bytes(buffer[-window_bytes:]) if len(buffer) >= window_bytes else bytes(buffer)
+            scored_to = len(window_chunk) & ~1
+
             audio = (
-                np.frombuffer(buffer, dtype=np.int16, count=scored_to // 2).astype(np.float32)
+                np.frombuffer(window_chunk[:scored_to], dtype=np.int16).astype(np.float32)
                 / 32768.0
             )
+
             # to_thread: model inference must not block WS keepalives
             label, confidence, used_model = await asyncio.to_thread(_detect_ssl_array, audio, 16000)
-            verdict_final = scored_to >= score_cap_bytes
 
             event = StreamDetectionEvent(
                 timestamp_ms=time.time() * 1000,
@@ -1244,11 +1297,11 @@ async def websocket_stream(websocket: WebSocket, token: str = ""):
                 label=label,
                 confidence=confidence,
                 model=used_model,
-                final=verdict_final,
+                final=False,
             )
             await websocket.send_json(event.model_dump())
             window_id += 1
-            next_score_at = scored_to + stride_bytes
+            next_score_at = received + stride_bytes
 
     except WebSocketDisconnect:
         pass
@@ -1398,8 +1451,14 @@ async def explain(
         explanation = _explain_classical(path)
     else:
         wav = _load_wav_mono16k(path)
-        label, confidence, seconds_analyzed = _detect_ssl_tensor(wav, str(model))
-        explanation = _explain_ssl_fast(path, str(model))
+        label, confidence, seconds_analyzed, used_model = _detect_ssl_tensor(wav, str(model))
+        model = ModelType(used_model)
+        # After fallback, model may now be wav2vec2_spoof (a HF hub model, not a
+        # PyTorch module) — use the correct explainer for the actual model used.
+        if model == ModelType.wav2vec2_spoof:
+            explanation = _explain_hf(path, str(model))
+        else:
+            explanation = _explain_ssl_fast(path, str(model))
     if explanation is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -1463,18 +1522,29 @@ def _detect_ssl_array(
     # production SSL checkpoint is not staged) — scored from a raw array.
     from voiceguard.models.registry import _REGISTRY_DEF
 
+    audio_np = np.asarray(audio, dtype=np.float32)
+
+    # VAD / Silence Check: When microphone receives silence or low ambient noise
+    # (RMS < 0.003 or peak abs < 0.008), classify as clean real silence rather than
+    # running unconditioned noise through deepfake model (which outputs false fake).
+    rms = float(np.sqrt(np.mean(np.square(audio_np)))) if len(audio_np) > 0 else 0.0
+    peak = float(np.max(np.abs(audio_np))) if len(audio_np) > 0 else 0.0
+
+    if rms < 0.003 or peak < 0.008:
+        return "real", 0.99, "vad_silence"
+
     if "hub" in _REGISTRY_DEF.get(model_key, {}):
-        label, confidence = _detect_hf_array(audio, sr, model_key)
+        label, confidence = _detect_hf_array(audio_np, sr, model_key)
         return label, confidence, model_key
 
     model = registry.load(model_key)
     if model is None:
         # Prefer the working hub detector over the degenerate classical baseline.
-        label, confidence = _detect_hf_array(audio, sr, "wav2vec2_spoof")
+        label, confidence = _detect_hf_array(audio_np, sr, "wav2vec2_spoof")
         used = "wav2vec2_spoof" if registry.load("wav2vec2_spoof") is not None else "stub"
         logger.info("stream: %s unavailable, scored with %s", model_key, used)
         return label, confidence, used
-    wav = torch.as_tensor(np.asarray(audio, dtype=np.float32)).reshape(1, -1)
+    wav = torch.as_tensor(audio_np).reshape(1, -1)
     if sr != 16000:
         wav = torchaudio.functional.resample(wav, sr, 16000)
     # Score the audio as given, from its start (padded up to the 3s minimum,
@@ -1482,4 +1552,5 @@ def _detect_ssl_array(
     fake_prob = _ssl_fake_prob(model, wav, model_key)
     label = "fake" if fake_prob >= 0.5 else "real"
     confidence = fake_prob if label == "fake" else 1.0 - fake_prob
+    return label, round(confidence, 4), model_key
     return label, round(confidence, 4), model_key

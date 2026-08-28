@@ -1,0 +1,84 @@
+================================================================================
+          REPLICA / VOICEGUARD — AI VOICE SECURITY & FORENSICS PLATFORM
+                              PROJECT TECH STACK
+================================================================================
+
+1. PROJECT OVERVIEW
+--------------------------------------------------------------------------------
+Name: REPLICA (VoiceGuard AI Platform)
+Description: Enterprise-grade Real-Time Voice Deepfake Detection, Synthesis Watermarking,
+             Explainable AI (XAI) Attribution, and Vishing Defense Platform.
+Architecture: Decoupled Full-Stack Architecture (REST + WebSockets + Deep Learning Engine)
+
+
+2. FRONTEND ARCHITECTURE & TECH STACK
+--------------------------------------------------------------------------------
+Core Framework:       React 18.3.1
+Language:             TypeScript 6.0.3
+Build Tool & Server:  Vite 5.4.10 (ESNext ESM HMR)
+Routing:              React Router DOM 6.30.4
+Styling & Design:     Vanilla CSS3 Custom Properties (Design Tokens) + TailwindCSS 3.4.14
+Design Aesthetic:     "Neon White" Light Mode & Cyberpunk HUD Dark Mode with Glassmorphism
+Iconography:          Lucide React 1.34.0
+Data Visualization:   Recharts 2.13.3 (Attribution heatmaps & frequency charts)
+Real-Time Audio:      HTML5 Web Audio API (AudioContext, AudioWorklet, PCM Resampling)
+Streaming Transport:  WebSockets (int16 16kHz Mono PCM Audio Chunking)
+Testing Library:      Vitest 3.2.6 & React Testing Library 16.3.2
+
+
+3. BACKEND & API INFRASTRUCTURE
+--------------------------------------------------------------------------------
+Runtime Environment:  Python >= 3.12
+Web Framework:        FastAPI 0.104.0 (Asynchronous ASGI Web Framework)
+ASGI Server:          Uvicorn 0.25.0 (Standard with uvloop / httptools)
+Authentication:       OAuth2 + JWT (PyJWT / Python-Jose 3.3.0 with Cryptography)
+Security & Limits:    SlowAPI 0.1.9 (IP Rate Limiting & Sliding Window Rate Guard)
+Validation:           Pydantic 2.5.0 & Pydantic-Settings 2.1.0
+HTTP Client:          HTTPX 0.26.0 (Async HTTP Client)
+Data Handling:        Python-Multipart 0.0.6 (Form & File Data Parser)
+
+
+4. DEEP LEARNING & AUDIO ML MODELS
+--------------------------------------------------------------------------------
+Core Deep Learning:   PyTorch 2.1.0+ (Torch Autograd, GPU CUDA / CPU Inference)
+Audio Processing ML:  TorchAudio 2.1.0+
+Pretrained Models:    HuggingFace Transformers 4.37.0
+Model Architectures:
+  - Flagship Model:   XLS-R-300M + AASIST Graph Attention Network (EER 2.84% ASVspoof)
+  - Hub Classifier:   Wav2Vec2 Anti-Spoofing (alexandreacff/wav2vec2-large-ft-fake-detection)
+  - Classical Baseline: Scikit-learn Random Forest / XGBoost 3.2.0 + MFCC Feature Extractor
+  - SSL Foundation:   Microsoft WavLM Base Plus / Large & Facebook Wav2Vec2 Large
+  - Efficient Runtime: ONNX 1.15.0 & ONNXRuntime 1.17.0
+
+
+5. AUDIO SIGNAL PROCESSING & SYNTHESIS
+--------------------------------------------------------------------------------
+Audio Processing:     Librosa 0.10.1 (MFCC, Mel Spectrogram, Spectral Centroid, Pitch Tracking)
+File I/O:             SoundFile 0.12.1 (libsndfile WAV, FLAC, OGG, MP3 multi-format decoding)
+Math & Arrays:        NumPy 2.4.6, SciPy 1.11.0, Pandas 2.1.0
+TTS Synthesis Engine: Kokoro TTS & XTTS v2 Engine Integration (Multi-voice cloning)
+
+
+6. EXPLAINABLE AI (XAI) & FORENSIC ATTRIBUTION
+--------------------------------------------------------------------------------
+Gradient Attribution: Captum 0.9.0 (Integrated Gradients waveform attribution)
+Occlusion Attribution: Custom Time-Domain Segment Occlusion Scorer
+Shapley Values:       SHAP 0.44.0
+PDF Report Generator: ReportLab 4.0.0 (NIST SP 800-86 Compliant PDF Forensic Reports)
+Narrative Engine:     Amazon Bedrock (Claude Haiku Forensic Narrative Integration)
+
+
+7. SECURITY, PROVENANCE & WATERMARKING
+--------------------------------------------------------------------------------
+Spectral Watermarking: Custom Keyed Inaudible Carrier Watermark Generator & Detector
+C2PA Provenance:      c2pa-python 0.32.12 (Cryptographic Manifest Signing & ES256 Verification)
+Privacy & Data Guard: Automatic PDPL Temporary File Auto-Deletion (≤60s TTL Sweep)
+
+
+8. DEVELOPMENT, TESTING & DEVOPS
+--------------------------------------------------------------------------------
+Unit Testing:         Pytest 7.4.0, Pytest-Asyncio 0.23.0, Pytest-Cov 7.1.0
+Code Quality & Linter: Ruff 0.1.0, Black 23.12.0, ESLint 9.13.0, TypeScript Compiler
+Security Audit:       Bandit 1.7.6
+Containerization:     Docker & Docker Compose (Production Deployment)
+================================================================================

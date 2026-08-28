@@ -32,6 +32,7 @@ export type StreamHandlers = {
   onEvent: (e: StreamEvent) => void
   onStatus: (s: StreamStatus) => void
   onError: (message: string) => void
+  onAudioLevel?: (level: number) => void
 }
 
 const TARGET_RATE = 16000
@@ -87,7 +88,7 @@ export class LiveMicStream {
   private pendingSamples = 0
   private stopped = false
 
-  constructor(private handlers: StreamHandlers) {}
+  constructor(private handlers: StreamHandlers) { }
 
   async start(): Promise<void> {
     this.stopped = false
@@ -179,6 +180,16 @@ export class LiveMicStream {
 
   private push(frame: Float32Array, sampleRate: number): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
+
+    if (this.handlers.onAudioLevel && frame.length > 0) {
+      let sum = 0
+      for (let i = 0; i < frame.length; i++) {
+        sum += frame[i] * frame[i]
+      }
+      const rms = Math.sqrt(sum / frame.length)
+      this.handlers.onAudioLevel(Math.min(1, rms * 5)) // scale for sensitivity
+    }
+
     this.pending.push(frame)
     this.pendingSamples += frame.length
     // Flush once we hold ≥ CHUNK_SAMPLES at the *mic* rate (chunk shrinks on resample).

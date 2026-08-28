@@ -59,6 +59,7 @@ build/
 htmlcov/
 .tox/
 venv/
+venv*/
 .venv/
 env/
 .env/

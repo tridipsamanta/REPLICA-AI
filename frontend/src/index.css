@@ -2,6 +2,431 @@
 @tailwind components;
 @tailwind utilities;
 
+:root,
+[data-theme="dark"],
+.dark {
+  --bg-app: #070A12;
+  --bg-secondary: #0B1020;
+  --bg-card: #101625;
+  --bg-elevated: #141B2D;
+  --bg-tinted: #131B30;
+  --bg-input: #0D1424;
+  --text-primary: #F5F7FA;
+  --text-secondary: #98A2B3;
+  --text-muted: #64748B;
+  --border-app: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.16);
+  --border-focus: rgba(99, 102, 241, 0.5);
+  --navbar-top: rgba(7, 10, 18, 0.60);
+  --navbar-scrolled: rgba(7, 10, 18, 0.72);
+  --navbar-border-top: rgba(255, 255, 255, 0.06);
+  --navbar-border-scrolled: rgba(255, 255, 255, 0.14);
+  --shadow-glass: 0 12px 36px -10px rgba(0, 0, 0, 0.6);
+  --shadow-card: 0 8px 30px rgba(0, 0, 0, 0.4);
+  --glow-indigo: 0 0 35px -5px rgba(99, 102, 241, 0.3);
+  --glow-red: 0 0 35px -5px rgba(239, 68, 68, 0.3);
+  --watermark-opacity: 0.14;
+  --watermark-opacity-hover: 0.20;
+  --chart-grid: rgba(255, 255, 255, 0.06);
+  --chart-text: #94a3b8;
+  --chart-tooltip-bg: #101625;
+  --chart-tooltip-border: rgba(255, 255, 255, 0.12);
+  --chart-tooltip-text: #f8fafc;
+}
+
+[data-theme="light"],
+.light {
+  --bg-app: #EBF0FA;
+  --bg-secondary: #F3F7FE;
+  --bg-card: rgba(255, 255, 255, 0.92);
+  --bg-elevated: rgba(255, 255, 255, 0.96);
+  --bg-tinted: #ECF2FE;
+  --bg-input: rgba(240, 244, 255, 0.92);
+  --text-primary: #070E20;
+  --text-secondary: #2D3A54;
+  --text-muted: #5A6A85;
+  --border-app: rgba(99, 102, 241, 0.24);
+  --border-hover: rgba(99, 102, 241, 0.48);
+  --border-focus: rgba(124, 58, 237, 0.65);
+  --navbar-top: rgba(235, 240, 250, 0.78);
+  --navbar-scrolled: rgba(243, 247, 254, 0.90);
+  --navbar-border-top: rgba(99, 102, 241, 0.20);
+  --navbar-border-scrolled: rgba(99, 102, 241, 0.35);
+  --shadow-glass: 0 10px 30px -5px rgba(99, 102, 241, 0.18), 0 0 20px rgba(6, 182, 212, 0.14);
+  --shadow-card: 0 8px 32px 0 rgba(99, 102, 241, 0.14), 0 0 25px 0 rgba(6, 182, 212, 0.10);
+  --glow-indigo: 0 0 35px -2px rgba(99, 102, 241, 0.38);
+  --glow-red: 0 0 35px -2px rgba(239, 68, 68, 0.38);
+  --watermark-opacity: 0.20;
+  --watermark-opacity-hover: 0.32;
+  --chart-grid: rgba(99, 102, 241, 0.14);
+  --chart-text: #2D3A54;
+  --chart-tooltip-bg: #FFFFFF;
+  --chart-tooltip-border: rgba(99, 102, 241, 0.30);
+  --chart-tooltip-text: #070E20;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
 body {
-  @apply bg-gray-950 text-gray-100 min-h-screen;
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 300ms ease-in-out, color 300ms ease-in-out;
+  overflow-x: hidden;
+}
+
+/* Neon White Body Background Overlay */
+[data-theme="light"] body,
+.light body {
+  background-color: #EBF0FA;
+  background-image:
+    radial-gradient(circle at 15% 15%, rgba(99, 102, 241, 0.14) 0%, transparent 45%),
+    radial-gradient(circle at 85% 85%, rgba(6, 182, 212, 0.14) 0%, transparent 45%),
+    radial-gradient(circle at 50% 30%, rgba(168, 85, 247, 0.10) 0%, transparent 50%),
+    linear-gradient(135deg, #F0F4FD 0%, #E6EDF9 50%, #ECE7FB 100%);
+  background-attachment: fixed;
+}
+
+/* Glass Navbar */
+.glass-navbar {
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+}
+
+[data-theme="light"] .glass-navbar,
+.light .glass-navbar {
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  box-shadow: 0 4px 25px -2px rgba(99, 102, 241, 0.15), 0 0 15px rgba(6, 182, 212, 0.10);
+}
+
+/* Global Smooth Micro-Interactions */
+*,
+::before,
+::after {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow, transform, opacity;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 200ms;
+}
+
+/* Respect Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  ::before,
+  ::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Page Transition */
+.animate-page-in {
+  animation: pageIn 250ms ease-out forwards;
+}
+
+@keyframes pageIn {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Cyber Scanner Animations */
+.cyber-scanner-container {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 5;
+}
+
+.cyber-scanner-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.8), transparent);
+  box-shadow: 0 0 15px 2px rgba(99, 102, 241, 0.5), 0 0 30px transparent;
+  animation: scan 3.5s ease-in-out infinite;
+  opacity: 0.6;
+}
+
+.cyber-scanner-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 80px;
+  background: linear-gradient(to bottom, rgba(99, 102, 241, 0.15), transparent);
+  animation: scan 3.5s ease-in-out infinite;
+  opacity: 0.4;
+}
+
+@keyframes scan {
+
+  0%,
+  100% {
+    transform: translateY(-20px);
+  }
+
+  50% {
+    transform: translateY(300px);
+  }
+}
+
+/* Custom Surface Utility Classes */
+.replica-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-app);
+  border-radius: 1.25rem;
+  box-shadow: var(--shadow-card);
+}
+
+[data-theme="light"] .replica-card,
+.light .replica-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.94) 0%, rgba(242, 246, 255, 0.88) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(99, 102, 241, 0.24);
+  box-shadow: 0 10px 32px -4px rgba(99, 102, 241, 0.14), 0 0 20px rgba(6, 182, 212, 0.10);
+}
+
+.replica-card-elevated {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-app);
+  border-radius: 1rem;
+  box-shadow: var(--shadow-glass);
+}
+
+[data-theme="light"] .replica-card-elevated,
+.light .replica-card-elevated {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(238, 244, 255, 0.92) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(124, 58, 237, 0.28);
+  box-shadow: 0 12px 36px -4px rgba(99, 102, 241, 0.18), 0 0 25px rgba(124, 58, 237, 0.12);
+}
+
+.replica-card-tinted {
+  background-color: var(--bg-tinted);
+  border: 1px solid var(--border-app);
+  border-radius: 1rem;
+}
+
+[data-theme="light"] .replica-card-tinted,
+.light .replica-card-tinted {
+  background: linear-gradient(135deg, rgba(238, 243, 255, 0.95) 0%, rgba(245, 240, 255, 0.90) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.22);
+  box-shadow: inset 0 0 15px rgba(99, 102, 241, 0.05);
+}
+
+.replica-input {
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-app);
+  color: var(--text-primary);
+  border-radius: 0.875rem;
+}
+
+[data-theme="light"] .replica-input,
+.light .replica-input {
+  background: rgba(240, 245, 255, 0.92);
+  border: 1px solid rgba(99, 102, 241, 0.26);
+  color: #070E20;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02), 0 0 12px rgba(99, 102, 241, 0.08);
+}
+
+.replica-input::placeholder {
+  color: var(--text-muted);
+}
+
+.replica-input:focus {
+  border-color: #5B5FEF;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(91, 95, 239, 0.15);
+}
+
+.replica-btn-primary {
+  background: linear-gradient(135deg, #5B5FEF 0%, #8B5CF6 100%);
+  color: #FFFFFF;
+  font-weight: 600;
+  border-radius: 0.875rem;
+  box-shadow: 0 4px 18px -2px rgba(91, 95, 239, 0.45);
+}
+
+.replica-btn-primary:hover {
+  background: linear-gradient(135deg, #4F52E6 0%, #7C3AED 100%);
+  box-shadow: 0 6px 22px -2px rgba(91, 95, 239, 0.55);
+  transform: translateY(-1px);
+}
+
+.replica-btn-primary:active {
+  transform: scale(0.98) translateY(0);
+}
+
+.replica-glow-indigo {
+  box-shadow: var(--glow-indigo);
+}
+
+.replica-glow-red {
+  box-shadow: var(--glow-red);
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-app);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-hover);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #5B5FEF;
+}
+
+@keyframes wave-pulse {
+
+  0%,
+  100% {
+    height: 20%;
+  }
+
+  50% {
+    height: 100%;
+  }
+}
+
+.animate-wave-bar {
+  animation: wave-pulse 1.2s infinite ease-in-out;
+}
+
+@keyframes forensic-scan {
+  0% { top: -20%; }
+  100% { top: 120%; }
+}
+
+.animate-forensic-scan {
+  animation: forensic-scan 3.5s linear infinite;
+  will-change: top;
+}
+
+/* Siri-style orb monitoring animation keyframes */
+@keyframes siri-orb-breath {
+  0%, 100% {
+    transform: scale(0.96);
+    filter: drop-shadow(0 0 25px rgba(99, 102, 241, 0.4)) drop-shadow(0 0 50px rgba(168, 85, 247, 0.3));
+  }
+  50% {
+    transform: scale(1.06);
+    filter: drop-shadow(0 0 45px rgba(99, 102, 241, 0.7)) drop-shadow(0 0 80px rgba(6, 182, 212, 0.5));
+  }
+}
+
+@keyframes siri-ring-expand-1 {
+  0% {
+    transform: scale(0.85) rotate(0deg);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.25) rotate(180deg);
+    opacity: 0.3;
+  }
+  100% {
+    transform: scale(0.85) rotate(360deg);
+    opacity: 0.7;
+  }
+}
+
+@keyframes siri-ring-expand-2 {
+  0% {
+    transform: scale(1.15) rotate(360deg);
+    opacity: 0.25;
+  }
+  50% {
+    transform: scale(0.9) rotate(180deg);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1.15) rotate(0deg);
+    opacity: 0.25;
+  }
+}
+
+.animate-siri-orb {
+  animation: siri-orb-breath 4s ease-in-out infinite;
+}
+
+.animate-siri-ring-1 {
+  animation: siri-ring-expand-1 7s linear infinite;
+}
+
+.animate-siri-ring-2 {
+  animation: siri-ring-expand-2 9s ease-in-out infinite;
+}
+
+/* JARVIS-Style Futuristic HUD Animations */
+@keyframes hud-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes hud-spin-reverse {
+  0% { transform: rotate(360deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes hud-beam-scan {
+  0% { top: -5%; }
+  100% { top: 105%; }
+}
+
+.animate-hud-spin {
+  animation: hud-spin 20s linear infinite;
+}
+
+.animate-hud-spin-reverse {
+  animation: hud-spin-reverse 15s linear infinite;
+}
+
+.animate-hud-scan {
+  animation: hud-beam-scan 4s linear infinite;
+  will-change: top;
+}
+
+/* Hospital ECG vital signal sweep */
+@keyframes ecg-line-sweep {
+  0% {
+    stroke-dashoffset: 1000;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-ecg {
+  stroke-dasharray: 1000;
+  animation: ecg-line-sweep 4s linear infinite;
 }
