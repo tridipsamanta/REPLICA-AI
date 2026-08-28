@@ -18,6 +18,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml ./
 COPY src/ ./src/
 COPY serve.py ./
+COPY checkpoints/ ./checkpoints/
+COPY tests/ ./tests/
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # CPU torch wheels via --extra-index-url in the SAME resolve (mirrors CI):

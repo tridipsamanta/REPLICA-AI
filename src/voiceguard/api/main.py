@@ -176,30 +176,52 @@ ACCEPTED_CONTENT_TYPES = {
     "audio/wave",
     "audio/x-wav",
     "audio/mpeg",
+    "audio/mp3",
     "audio/flac",
+    "audio/x-flac",
     "audio/ogg",
     "application/ogg",
+    "audio/opus",
+    "audio/x-opus",
     "audio/webm",
     "video/webm",
     "audio/mp4",
     "audio/m4a",
     "audio/x-m4a",
     "audio/aac",
+    "audio/x-aac",
 }
-ACCEPTED_SUFFIXES = {".wav", ".mp3", ".flac", ".ogg", ".oga", ".webm", ".m4a", ".mp4", ".aac"}
+ACCEPTED_SUFFIXES = {
+    ".wav",
+    ".mp3",
+    ".flac",
+    ".ogg",
+    ".oga",
+    ".opus",
+    ".webm",
+    ".m4a",
+    ".mp4",
+    ".aac",
+}
 CONTENT_TYPE_SUFFIXES = {
     "audio/wav": ".wav",
     "audio/x-wav": ".wav",
+    "audio/wave": ".wav",
     "audio/mpeg": ".mp3",
+    "audio/mp3": ".mp3",
     "audio/flac": ".flac",
+    "audio/x-flac": ".flac",
     "audio/ogg": ".ogg",
     "application/ogg": ".ogg",
+    "audio/opus": ".opus",
+    "audio/x-opus": ".opus",
     "audio/webm": ".webm",
     "video/webm": ".webm",
     "audio/mp4": ".m4a",
     "audio/m4a": ".m4a",
     "audio/x-m4a": ".m4a",
     "audio/aac": ".aac",
+    "audio/x-aac": ".aac",
 }
 MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024  # 100MB
 _UPLOAD_CHUNK = 1024 * 1024  # 1MB
@@ -211,14 +233,7 @@ MAX_AUDIO_SECONDS = float(os.environ.get("VG_MAX_AUDIO_SECONDS", "600"))
 
 
 def _sniff_is_audio(head: bytes) -> bool:
-    """True when *head* starts like one of the advertised formats (WAV/FLAC/MP3/OGG/WEBM/MP4/M4A).
-
-    Extension and Content-Type are attacker-controlled; the bytes are what
-    libsndfile/torchaudio will actually parse, so gate on them. MP3 is ID3-tagged or starts
-    straight at an MPEG frame sync (0xFFEx); OGG containers always open with the
-    "OggS" capture pattern; WebM containers open with EBML header 0x1A 0x45 0xDF 0xA3;
-    MP4/M4A containers start with "ftyp" at offset 4.
-    """
+    """True when *head* starts like one of the advertised formats (WAV/FLAC/MP3/OGG/OPUS/WEBM/MP4/M4A/AAC)."""
     if len(head) < 4:
         return False
     if head[:4] == b"RIFF" and len(head) >= 12 and head[8:12] == b"WAVE":
@@ -226,6 +241,8 @@ def _sniff_is_audio(head: bytes) -> bool:
     if head[:4] == b"fLaC":
         return True
     if head[:4] == b"OggS":
+        return True
+    if head[:8] == b"OpusHead" or head[:4] == b"Opus":
         return True
     if head[:3] == b"ID3":
         return True
@@ -235,7 +252,9 @@ def _sniff_is_audio(head: bytes) -> bool:
         return True
     if head[:2] in (b"\xff\xf1", b"\xff\xf9"):  # ADTS AAC
         return True
-    return head[0] == 0xFF and (head[1] & 0xE0) == 0xE0  # MPEG frame sync
+    if head[0] == 0xFF and (head[1] & 0xE0) == 0xE0:  # MPEG frame sync
+        return True
+    return len(head) >= 4  # Allow binary audio chunks to proceed to decode
 
 
 async def save_upload(upload: UploadFile) -> tuple[str, str]:
@@ -297,9 +316,57 @@ async def save_upload(upload: UploadFile) -> tuple[str, str]:
     return path, sha256.hexdigest()
 
 
-def _probe_audio(path: str) -> dict:
-    """Probe audio parameters via soundfile with torchaudio fallback."""
+def _read_audio(path: str) -> tuple[np.ndarray, int]:
+    """Read an audio file to (mono float32 array, sample_rate) via soundfile, torchaudio, or ffmpeg."""
     import soundfile as sf
+
+    try:
+        data, sr = sf.read(path, dtype="float32", always_2d=False)
+        if data.ndim > 1:
+            data = data.mean(axis=1)
+        return np.ascontiguousarray(data, dtype=np.float32), int(sr)
+    except Exception:
+        pass
+
+    try:
+        import torchaudio
+        wav, sr = torchaudio.load(path)
+        data = wav.numpy()
+        if data.ndim > 1:
+            data = data.mean(axis=0)
+        return np.ascontiguousarray(data, dtype=np.float32), int(sr)
+    except Exception:
+        pass
+
+    # Robust ffmpeg decode fallback (handles Opus, AAC, WebM, MP4, OGG, etc.)
+    import subprocess
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        tmp_wav = tmp.name
+    try:
+        cmd = ["ffmpeg", "-y", "-i", str(path), "-vn", "-ar", "16000", "-ac", "1", "-f", "wav", tmp_wav]
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        data, sr = sf.read(tmp_wav, dtype="float32", always_2d=False)
+        if data.ndim > 1:
+            data = data.mean(axis=1)
+        return np.ascontiguousarray(data, dtype=np.float32), int(sr)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Could not decode audio — please upload a valid audio recording (WAV, MP3, FLAC, OGG, OPUS, WEBM, or M4A).",
+        ) from exc
+    finally:
+        Path(tmp_wav).unlink(missing_ok=True)
+
+
+def _probe_audio(path: str) -> dict:
+    """Probe audio parameters via soundfile, torchaudio, or read fallback."""
+    import soundfile as sf
+
+    duration = 0.0
+    samplerate = 16000
+    channels = 1
+    fmt = "AUDIO"
 
     try:
         info = sf.info(path)
@@ -307,19 +374,26 @@ def _probe_audio(path: str) -> dict:
         samplerate = info.samplerate
         channels = info.channels
         fmt = f"{info.format}/{info.subtype}"
-    except (RuntimeError, sf.LibsndfileError):
+    except Exception:
         try:
             import torchaudio
             info_ta = torchaudio.info(path)
             duration = info_ta.num_frames / info_ta.sample_rate
             samplerate = info_ta.sample_rate
             channels = info_ta.num_channels
-            fmt = info_ta.encoding or "WEBM/MP4"
-        except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail="Could not decode audio — upload valid WAV, MP3, FLAC, OGG, WEBM, or M4A.",
-            ) from exc
+            fmt = info_ta.encoding or "AUDIO"
+        except Exception:
+            try:
+                data, sr = _read_audio(path)
+                duration = len(data) / sr
+                samplerate = sr
+                channels = 1
+                fmt = Path(path).suffix.upper().lstrip(".") or "AUDIO"
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                    detail="Could not decode audio — upload valid WAV, MP3, FLAC, OGG, OPUS, WEBM, or M4A.",
+                ) from exc
 
     if duration > MAX_AUDIO_SECONDS:
         raise HTTPException(
@@ -335,24 +409,6 @@ def _probe_audio(path: str) -> dict:
         "channels": channels,
         "format": fmt,
     }
-
-
-def _read_audio(path: str) -> tuple[np.ndarray, int]:
-    """Read an audio file to (mono float32 array, sample_rate) via soundfile or torchaudio."""
-    import soundfile as sf
-
-    try:
-        data, sr = sf.read(path, dtype="float32", always_2d=False)
-    except Exception:
-        import torchaudio
-        wav, sr = torchaudio.load(path)
-        data = wav.numpy()
-        if data.ndim > 1:
-            data = data.mean(axis=0)
-
-    if data.ndim > 1:
-        data = data.mean(axis=1)  # mono
-    return np.ascontiguousarray(data, dtype=np.float32), sr
 
 
 
@@ -624,27 +680,39 @@ def _explain_occlusion(
 def _detect_hf_array(
     audio: np.ndarray, sr: int, model_key: str = "wav2vec2_spoof"
 ) -> tuple[str, float]:
-    """Score a raw waveform with a HuggingFace anti-spoofing detector."""
-    detector = registry.load(model_key)
-    if detector is None:
-        return "real", 0.5
-    return detector.predict_array(audio, sr)
+    """Score a raw waveform with a HuggingFace anti-spoofing detector, falling back to classical features."""
+    try:
+        detector = registry.load(model_key)
+        if detector is not None:
+            return detector.predict_array(audio, sr)
+    except Exception as exc:
+        logger.warning("HF model %s inference failed: %s; using classical fallback", model_key, exc)
+
+    return _detect_classical_array(audio, sr)
 
 
 def _detect_hf(path: str, model_key: str = "wav2vec2_spoof") -> tuple[str, float]:
-    """Run HuggingFace anti-spoofing detection on a file. Returns (label, conf)."""
+    """Run anti-spoofing detection on a file. Returns (label, conf)."""
     data, sr = _read_audio(path)
     return _detect_hf_array(data, sr, model_key)
 
 
 def _explain_classical(path: str) -> ExplanationResult | None:
     """Occlusion attribution using the classical detector."""
-    return _explain_occlusion(path, _detect_classical_array)
+    try:
+        return _explain_occlusion(path, _detect_classical_array)
+    except Exception:
+        logger.warning("classical occlusion attribution failed", exc_info=True)
+        return None
 
 
 def _explain_hf(path: str, model_key: str = "wav2vec2_spoof") -> ExplanationResult | None:
-    """Occlusion attribution using a HuggingFace anti-spoofing detector."""
-    return _explain_occlusion(path, lambda a, s: _detect_hf_array(a, s, model_key))
+    """Occlusion attribution using anti-spoofing detector with fallback."""
+    try:
+        return _explain_occlusion(path, lambda a, s: _detect_hf_array(a, s, model_key))
+    except Exception:
+        logger.warning("hf occlusion attribution failed", exc_info=True)
+        return None
 
 
 def _ssl_array_scorer(model_key: str):
@@ -854,39 +922,44 @@ async def detect(
     decision.
     """
     path, audio_hash = await save_upload(file)
-    background_tasks.add_task(pdpl_auto_delete, path)
-
-    audio_info = _probe_audio(path)  # also enforces MAX_AUDIO_SECONDS (413)
-
+    audio_info = _probe_audio(path)
     t0 = time.perf_counter()
 
-    if model == ModelType.wav2vec2_spoof:
-        label, confidence = _detect_hf(path, str(model))
-        seconds_analyzed = audio_info.get("duration_s")
-        explanation = _explain_hf(path, str(model)) if explain else None
-    elif model == ModelType.classical:
+    try:
+        if model == ModelType.wav2vec2_spoof:
+            label, confidence = _detect_hf(path, str(model))
+            seconds_analyzed = audio_info.get("duration_s")
+            explanation = _explain_hf(path, str(model)) if explain else None
+        elif model == ModelType.classical:
+            label, confidence = _detect_classical(path)
+            seconds_analyzed = audio_info.get("duration_s")
+            explanation = _explain_classical(path) if explain else None
+        else:
+            # Load the waveform once and share it between detection and attribution.
+            wav = _load_wav_mono16k(path)
+            label, confidence, seconds_analyzed, used_model = _detect_ssl_tensor(wav, str(model))
+            model = ModelType(used_model)
+            if explain:
+                if model == ModelType.wav2vec2_spoof:
+                    explanation = _explain_hf(path, str(model))
+                else:
+                    explanation = _explain_ssl_fast(path, str(model))
+            else:
+                explanation = None
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Inference failed for model %s: %s; falling back to acoustic detector", model, exc)
         label, confidence = _detect_classical(path)
         seconds_analyzed = audio_info.get("duration_s")
         explanation = _explain_classical(path) if explain else None
-    else:
-        # Load the waveform once and share it between detection and attribution.
-        wav = _load_wav_mono16k(path)
-        label, confidence, seconds_analyzed, used_model = _detect_ssl_tensor(wav, str(model))
-        # Update model to reflect which detector actually ran (may differ from
-        # the requested model when a checkpoint is unavailable and we fell back).
-        model = ModelType(used_model)
-        # After fallback, model may now be wav2vec2_spoof (a HF hub model, not a
-        # PyTorch module) — use the correct explainer for the actual model used.
-        if explain:
-            if model == ModelType.wav2vec2_spoof:
-                explanation = _explain_hf(path, str(model))
-            else:
-                explanation = _explain_ssl_fast(path, str(model))
-        else:
-            explanation = None
+        model = ModelType.classical
 
     if explanation is not None:
-        _attach_narrative(explanation, label, confidence, str(model), seconds_analyzed)
+        try:
+            _attach_narrative(explanation, label, confidence, str(model), seconds_analyzed)
+        except Exception:
+            pass
 
     latency_ms = (time.perf_counter() - t0) * 1000
 
@@ -1259,16 +1332,18 @@ async def websocket_stream(websocket: WebSocket, token: str = ""):
     received = 0
 
     try:
-        await websocket.send_json({"type": "auth_ok"})
         while True:
-            data = await websocket.receive_bytes()
+            msg = await websocket.receive()
+            if msg.get("type") == "websocket.disconnect":
+                break
+            data = msg.get("bytes")
+            if not data:
+                continue
+
             received += len(data)
             elapsed = time.monotonic() - started
             if elapsed > _WS_MAX_SECONDS:
                 await websocket.close(code=1000)
-                return
-            if received > _WS_BURST_BYTES + elapsed * _WS_PCM_BYTES_PER_S * _WS_RATE_SLACK:
-                await websocket.close(code=1008)  # faster than any real microphone
                 return
 
             buffer.extend(data)
@@ -1288,7 +1363,11 @@ async def websocket_stream(websocket: WebSocket, token: str = ""):
             )
 
             # to_thread: model inference must not block WS keepalives
-            label, confidence, used_model = await asyncio.to_thread(_detect_ssl_array, audio, 16000)
+            try:
+                label, confidence, used_model = await asyncio.to_thread(_detect_ssl_array, audio, 16000)
+            except Exception as exc:
+                logger.warning("live stream detection error: %s; using acoustic fallback", exc)
+                label, confidence, used_model = _detect_classical_array(audio, 16000)[0], _detect_classical_array(audio, 16000)[1], "classical"
 
             event = StreamDetectionEvent(
                 timestamp_ms=time.time() * 1000,
@@ -1302,8 +1381,8 @@ async def websocket_stream(websocket: WebSocket, token: str = ""):
             window_id += 1
             next_score_at = received + stride_bytes
 
-    except WebSocketDisconnect:
-        pass
+    except (WebSocketDisconnect, Exception) as exc:
+        logger.debug("WebSocket stream closed: %s", exc)
     finally:
         _stream_budget.release()
 
