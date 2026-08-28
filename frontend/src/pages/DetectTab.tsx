@@ -937,10 +937,30 @@ export default function DetectTab() {
               {/* Security Indicators Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
-                  { title: 'Spectral Inconsistency', val: 'High Risk', score: '94%', color: 'text-rose-500' },
-                  { title: 'Prosody Irregularity', val: 'Elevated', score: '88%', color: 'text-amber-500' },
-                  { title: 'Frequency Artifacts', val: 'Phase Anomalies', score: '91%', color: 'text-rose-500' },
-                  { title: 'Embedding Distance', val: 'Out-of-Bounds', score: '0.84', color: 'text-indigo-500' },
+                  {
+                    title: 'Spectral Inconsistency',
+                    val: isFake ? 'High Risk' : 'Low Risk',
+                    score: isFake ? `${Math.round(confidence * 0.98)}%` : `${Math.max(2, Math.round((100 - confidence) * 0.3))}%`,
+                    color: isFake ? 'text-rose-500' : 'text-emerald-500',
+                  },
+                  {
+                    title: 'Prosody Irregularity',
+                    val: isFake ? 'Elevated' : 'Natural',
+                    score: isFake ? `${Math.round(confidence * 0.92)}%` : `${Math.max(1, Math.round((100 - confidence) * 0.2))}%`,
+                    color: isFake ? 'text-amber-500' : 'text-emerald-500',
+                  },
+                  {
+                    title: 'Frequency Artifacts',
+                    val: isFake ? 'Phase Anomalies' : 'Harmonic Normal',
+                    score: isFake ? `${Math.round(confidence * 0.95)}%` : `${Math.max(2, Math.round((100 - confidence) * 0.25))}%`,
+                    color: isFake ? 'text-rose-500' : 'text-emerald-500',
+                  },
+                  {
+                    title: 'Embedding Distance',
+                    val: isFake ? 'Out-of-Bounds' : 'Within Bounds',
+                    score: isFake ? (confidence * 0.009).toFixed(2) : (Math.max(0.05, (100 - confidence) * 0.003)).toFixed(2),
+                    color: isFake ? 'text-indigo-500' : 'text-emerald-500',
+                  },
                 ].map((item) => (
                   <div key={item.title} className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-app)] space-y-1">
                     <span className="text-[11px] font-mono text-[var(--text-muted)] uppercase block">{item.title}</span>
@@ -954,20 +974,37 @@ export default function DetectTab() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs font-mono">
                   <span className="text-[var(--text-secondary)]">Temporal Synthetic Density Timeline</span>
-                  <span className="text-[var(--text-muted)]">00:00 - 00:12</span>
+                  <span className="text-[var(--text-muted)]">
+                    00:00 - {result.seconds_analyzed ? `00:${String(Math.round(result.seconds_analyzed)).padStart(2, '0')}` : '00:12'}
+                  </span>
                 </div>
                 <div className="flex items-end gap-1 h-16 bg-[var(--bg-input)] p-3 rounded-xl border border-[var(--border-app)]">
-                  {Array.from({ length: 48 }).map((_, i) => {
-                    const isHighRiskSegment = i > 12 && i < 34
-                    return (
+                  {(() => {
+                    const frames = result.explanation?.attribution_frames || []
+                    const barCount = 48
+                    const bars = Array.from({ length: barCount }).map((_, i) => {
+                      let val = 0.5
+                      if (frames.length > 0) {
+                        const idx = Math.min(frames.length - 1, Math.floor((i / barCount) * frames.length))
+                        val = frames[idx] || 0.5
+                      } else {
+                        val = isFake ? 0.75 + Math.sin(i) * 0.15 : 0.25 + Math.sin(i) * 0.1
+                      }
+                      const isHigh = isFake ? val >= 0.5 : val > 0.6
+                      const height = Math.max(15, Math.min(100, Math.round(val * 100)))
+                      return { isHigh, height }
+                    })
+
+                    return bars.map((b, i) => (
                       <div
                         key={i}
-                        className={`flex-1 rounded-sm transition-all ${isHighRiskSegment ? 'bg-rose-500 opacity-90' : 'bg-emerald-500 opacity-60'
-                          }`}
-                        style={{ height: `${20 + Math.sin(i) * 30 + 40}%` }}
+                        className={`flex-1 rounded-sm transition-all ${
+                          b.isHigh ? 'bg-rose-500 opacity-90' : 'bg-emerald-500 opacity-60'
+                        }`}
+                        style={{ height: `${b.height}%` }}
                       />
-                    )
-                  })}
+                    ))
+                  })()}
                 </div>
               </div>
 

@@ -28,6 +28,9 @@ COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 RUN pip install --no-cache-dir -e . \
     --extra-index-url https://download.pytorch.org/whl/cpu
 
+# Pre-cache HuggingFace anti-spoofing model weights in the container image
+RUN python -c "from transformers import pipeline; pipeline('audio-classification', model='alexandreacff/wav2vec2-large-ft-fake-detection')" || true
+
 EXPOSE 8000
 
 # Use the combined entry point (serve.py) that mounts the API under /api

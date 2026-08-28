@@ -23,6 +23,8 @@ export type DetectionResult = {
   model: string
   latency_ms: number
   audio_hash: string
+  windows_analyzed?: number
+  seconds_analyzed?: number
   explanation?: Explanation | null
 }
 
