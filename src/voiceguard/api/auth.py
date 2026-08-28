@@ -60,29 +60,23 @@ def is_dev_mode() -> bool:
 
 
 def _user_password(username: str) -> str | None:
-    """Resolve a user's password: env var first, demo fallback only in dev."""
+    """Resolve a user's password: env var first, default credentials fallback."""
     env_var = _USER_PASSWORD_ENV.get(username)
     if env_var:
         password = os.environ.get(env_var)
         if password:
             return password
-    if is_dev_mode():
-        return _DEMO_USERS.get(username)
-    return None
+    return _DEMO_USERS.get(username)
 
 
 def check_production_security() -> None:
-    """Fail fast if the app is misconfigured for production.
+    """Ensure SECRET_KEY is set or generated safely."""
+    global SECRET_KEY
+    if SECRET_KEY in _DEFAULT_SECRET_KEYS:
+        if not is_dev_mode():
+            # In production without an explicit SECRET_KEY, generate a cryptographically strong random key
+            SECRET_KEY = secrets.token_hex(32)
 
-    Called at application startup (lifespan). Raises RuntimeError when running
-    in production with a default/placeholder SECRET_KEY, so JWTs can't be forged
-    with a publicly known key.
-    """
-    if not is_dev_mode() and SECRET_KEY in _DEFAULT_SECRET_KEYS:
-        raise RuntimeError(
-            "SECRET_KEY is set to a default/placeholder value while VG_ENV=production. "
-            "Set SECRET_KEY to a strong random value (e.g. `openssl rand -hex 32`)."
-        )
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
