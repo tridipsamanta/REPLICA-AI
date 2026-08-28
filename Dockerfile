@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY pyproject.toml ./
 COPY src/ ./src/
+COPY serve.py ./
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # CPU torch wheels via --extra-index-url in the SAME resolve (mirrors CI):
@@ -28,7 +29,9 @@ RUN pip install --no-cache-dir -e . \
 
 EXPOSE 8000
 
-# --proxy-headers + --forwarded-allow-ips "*": behind the compose nginx, trust
-# X-Forwarded-For so rate limiting keys on the real client IP (container network).
-CMD ["uvicorn", "voiceguard.api.main:app", "--host", "0.0.0.0", "--port", "8000", \
+# Use the combined entry point (serve.py) that mounts the API under /api
+# and serves the frontend SPA at / — matching the frontend's expectations.
+# --proxy-headers + --forwarded-allow-ips "*": trust X-Forwarded-For so
+# rate limiting keys on the real client IP.
+CMD ["uvicorn", "serve:app", "--host", "0.0.0.0", "--port", "8000", \
      "--proxy-headers", "--forwarded-allow-ips", "*"]

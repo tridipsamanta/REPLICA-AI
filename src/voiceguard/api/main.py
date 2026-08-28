@@ -138,6 +138,7 @@ _DEFAULT_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:3000",
+    "https://replica-ai.onrender.com",
 ]
 _domain = os.environ.get("VOICEGUARD_DOMAIN", "").strip()
 _domain_origins = [f"https://{_domain}", f"https://www.{_domain}"] if _domain else []
@@ -1553,41 +1554,4 @@ def _detect_ssl_array(
     label = "fake" if fake_prob >= 0.5 else "real"
     confidence = fake_prob if label == "fake" else 1.0 - fake_prob
     return label, round(confidence, 4), model_key
-
-
-# ── SPA / Frontend & Root Route Handling ─────────────────────────────────────
-
-from fastapi.responses import FileResponse
-
-_CANDIDATE_FRONTEND_PATHS = [
-    Path(__file__).resolve().parents[3] / "frontend" / "dist",
-    Path("/app/frontend/dist"),
-    Path("frontend/dist"),
-]
-
-FRONTEND_DIST = next((p for p in _CANDIDATE_FRONTEND_PATHS if (p / "index.html").exists()), None)
-
-if FRONTEND_DIST is not None:
-    _assets_dir = FRONTEND_DIST / "assets"
-    if _assets_dir.exists():
-        app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="assets")
-
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_spa(request: Request, full_path: str):
-        if full_path:
-            file_path = FRONTEND_DIST / full_path
-            if file_path.is_file():
-                return FileResponse(file_path)
-        return FileResponse(FRONTEND_DIST / "index.html")
-else:
-    @app.get("/", include_in_schema=False)
-    async def root():
-        return {
-            "name": "VoiceGuard API",
-            "version": __version__,
-            "status": "running",
-            "docs": "/docs",
-            "health": "/health",
-            "message": "VoiceGuard API is active. Visit /docs for interactive API documentation.",
-        }
 
